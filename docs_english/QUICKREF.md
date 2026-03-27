@@ -1,0 +1,124 @@
+# VeriFlow V1 — Quick Reference
+
+## Activate environment (Windows)
+```bat
+C:\Users\<user>\oss-cad-suite\environment.bat
+cd C:\path\to\your\project
+```
+
+---
+
+## Commands
+
+```bash
+# Initialize database
+python veriflow/cli.py --db ./database init
+python veriflow/cli.py --db ./database init --force
+
+# Create tile
+python veriflow/cli.py --db ./database create-tile
+
+# Full run
+python veriflow/cli.py --db ./database run --tile 0001
+
+# Run with options
+python veriflow/cli.py --db ./database run --tile 0001 --waves
+python veriflow/cli.py --db ./database run --tile 0001 --skip-synth
+python veriflow/cli.py --db ./database run --tile 0001 --only-check
+
+# Open waveforms
+python veriflow/cli.py --db ./database waves --tile 0001
+python veriflow/cli.py --db ./database waves --tile 0001 --run run-003
+
+# Bump version / revision
+python veriflow/cli.py --db ./database bump-version --tile 0001
+python veriflow/cli.py --db ./database bump-revision --tile 0001
+
+# Run tests
+python -m veriflow.tests.runner
+```
+
+---
+
+## Workflow
+
+```
+init → fill project_config.yaml
+     → create-tile
+     → fill tile_config.yaml
+     → add RTL to src/rtl/<top_module>.v
+     → edit test in src/tb/tb_tile.v
+     → fill run_config.yaml
+     → run --tile XXXX --waves
+```
+
+---
+
+## Files to edit per tile
+
+```
+database/config/tile_0001/
+├── tile_config.yaml     ← name, author, top_module, description
+├── run_config.yaml      ← author, objective, run notes
+└── src/
+    ├── rtl/<top_module>.v   ← user RTL
+    └── tb/tb_tile.v         ← test between the markers
+```
+
+---
+
+## Test file structure (tb_tile.v)
+
+```verilog
+// USER TEST STARTS HERE //
+write_data_reg_a(32'd1);
+write_data_reg_b(32'd1);
+@(posedge clk);
+$display("result = %0d", data_reg_c);
+// USER TEST ENDS HERE //
+```
+
+---
+
+## Available tasks in the testbench
+
+| Task | Description |
+|---|---|
+| `write_data_reg_a(data)` | Write to data_reg_a |
+| `write_data_reg_b(data)` | Write to data_reg_b |
+| `write_csr_in(data)` | Write to csr_in |
+| `reset_csr_in` | Clear bits [15:12] of csr_in |
+| `read_csr_out(data)` | Read csr_out into variable |
+
+**Directly accessible signals:** `clk`, `arst_n`, `csr_in`, `data_reg_a`, `data_reg_b`, `data_reg_c`, `csr_out`, `csr_in_re`, `csr_out_we`
+
+---
+
+## Run status
+
+| Status | Condition |
+|---|---|
+| `PASS` | Connectivity PASS + Simulation COMPLETED + Synthesis PASS |
+| `PARTIAL` | At least one stage was SKIPPED |
+| `FAIL` | Connectivity FAIL or Synthesis FAIL |
+
+---
+
+## Tile ID format
+
+```
+MST130-01-26032500010102
+│         │      │  │  └─ revision (02)
+│         │      │  └──── version (01)
+│         │      └─────── tile number (0001)
+│         └────────────── date YYMMDD (260325)
+└──────────────────────── id_prefix
+```
+
+---
+
+## Version hierarchy
+
+- `bump-version` → version +1, revision unchanged *(designer iteration)*
+- `bump-revision` → revision +1, version reset to 01 *(advisor authorization)*
+- Both preserve the previous directory and create a new clean one
