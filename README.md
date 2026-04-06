@@ -6,12 +6,13 @@ Lightweight RTL verification and documentation framework for multi-project ASIC 
 
 ## Features
 
-- **Connectivity check** — verifies port wiring via Icarus Verilog compilation
+- **Two operating modes** — SemiCoLab mode (fixed port convention) and Universal mode (any RTL module)
+- **Connectivity check** — verifies port wiring via Icarus Verilog compilation *(SemiCoLab mode)*
 - **Simulation** — runs user testbenches and captures VCD waveforms
-- **Synthesis** — validates RTL with Yosys and reports cell count
+- **Synthesis** — validates RTL with Yosys, reports cell count, detects inferred latches
 - **Auto-documentation** — generates `manifest.yaml`, `summary.md`, `notes.md`, and `README.md` per run
 - **Run history** — full CSV records queryable per tile and per run
-- **Version tracking** — `bump-version` and `bump-revision` commands with preserved history
+- **Version tracking** — `bump-version` and `bump-revision` with preserved history
 - **GTKWave integration** — open waveforms directly from the CLI
 
 ---
@@ -30,12 +31,25 @@ Lightweight RTL verification and documentation framework for multi-project ASIC 
 # Initialize the database
 python veriflow/cli.py --db ./database init
 
+# Set semicolab: true or false in database/project_config.yaml
+
 # Create a tile
 python veriflow/cli.py --db ./database create-tile
 
 # Fill in config/tile_0001/ with your RTL and test, then run
 python veriflow/cli.py --db ./database run --tile 0001 --waves
 ```
+
+---
+
+## Operating Modes
+
+Configured via `semicolab` field in `project_config.yaml`. Applies to the entire database.
+
+| Mode | `semicolab` | Connectivity Check | Testbench |
+|---|---|---|---|
+| SemiCoLab | `true` | ✓ Enabled | Stimuli only — VeriFlow handles the wrapper |
+| Universal | `false` | ✗ Skipped | Full testbench — user writes `module tb` |
 
 ---
 
@@ -84,7 +98,7 @@ Date:    2026-03-25
 
 ```bash
 python -m veriflow.tests.runner
-# Results: 22 passed, 0 failed
+# Results: 26 passed, 0 failed
 ```
 
 ---

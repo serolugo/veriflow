@@ -533,6 +533,76 @@ def test_manifest_custom_serializer():
     assert "results:" in rendered
 
 
+def test_semicolab_true_creates_tb_files():
+    """semicolab: true should copy tb_tile.v and tb_tasks.v to src/tb/"""
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        db = _make_db(tmp)
+        _fill_project_config(db, id_prefix="TST-01")
+        from veriflow.commands.create_tile import cmd_create_tile
+        cmd_create_tile(db)
+        tb_dir = db / "config" / "tile_0001" / "src" / "tb"
+        assert (tb_dir / "tb_tile.v").exists(), "tb_tile.v not found"
+        assert (tb_dir / "tb_tasks.v").exists(), "tb_tasks.v not found"
+    finally:
+        shutil.rmtree(tmp)
+
+
+def test_semicolab_false_creates_empty_tb():
+    """semicolab: false should only copy empty tb_tile.v, no tb_tasks.v"""
+    import yaml
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        db = _make_db(tmp)
+        cfg = {"id_prefix": "TST-01", "project_name": "Test", "repo": "", "description": "", "semicolab": False}
+        (db / "project_config.yaml").write_text(yaml.dump(cfg), encoding="utf-8")
+        from veriflow.commands.create_tile import cmd_create_tile
+        cmd_create_tile(db)
+        tb_dir = db / "config" / "tile_0001" / "src" / "tb"
+        assert (tb_dir / "tb_tile.v").exists(), "tb_tile.v not found"
+        assert not (tb_dir / "tb_tasks.v").exists(), "tb_tasks.v should not exist in universal mode"
+    finally:
+        shutil.rmtree(tmp)
+
+
+def test_semicolab_column_in_tile_index():
+    """tile_index.csv should have semicolab column"""
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        db = _make_db(tmp)
+        _fill_project_config(db)
+        from veriflow.commands.create_tile import cmd_create_tile
+        cmd_create_tile(db)
+        from veriflow.core.csv_store import get_tile_row
+        row = get_tile_row(db / "tile_index.csv", "0001")
+        assert "semicolab" in row, "semicolab column missing from tile_index"
+        assert row["semicolab"] == "true"
+    finally:
+        shutil.rmtree(tmp)
+
+
+def test_semicolab_column_in_records():
+    """records.csv should have Semicolab column after a run"""
+    import csv
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        db = _make_db(tmp)
+        _fill_project_config(db)
+        from veriflow.commands.create_tile import cmd_create_tile
+        cmd_create_tile(db)
+        _add_rtl(db, "0001", "my_tile")
+        _fill_tile_config(db, "0001", "my_tile")
+        _fill_run_config(db, "0001")
+        from veriflow.commands.run import cmd_run
+        cmd_run(db=db, tile_number="0001", skip_check=True, skip_sim=True, skip_synth=True)
+        rows = list(csv.DictReader((db / "records.csv").read_text(encoding="utf-8").splitlines()))
+        assert len(rows) == 1
+        assert "Semicolab" in rows[0], "Semicolab column missing from records"
+        assert rows[0]["Semicolab"] == "true"
+    finally:
+        shutil.rmtree(tmp)
+
+
 # ── registry ──────────────────────────────────────────────────────────────────
 
 ALL_TESTS = [
@@ -558,4 +628,8 @@ ALL_TESTS = [
     ("run_copies_rtl",                  test_run_copies_rtl),
     ("run_multiple_runs",               test_run_multiple_runs),
     ("manifest_custom_serializer",      test_manifest_custom_serializer),
+    ("semicolab_true_creates_tb_files",  test_semicolab_true_creates_tb_files),
+    ("semicolab_false_creates_empty_tb", test_semicolab_false_creates_empty_tb),
+    ("semicolab_column_in_tile_index",   test_semicolab_column_in_tile_index),
+    ("semicolab_column_in_records",      test_semicolab_column_in_records),
 ]

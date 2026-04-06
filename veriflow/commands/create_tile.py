@@ -83,18 +83,31 @@ def cmd_create_tile(db: Path) -> None:
     (config_tile_dir / "run_config.yaml").write_text(_RUN_CONFIG_TEMPLATE, encoding="utf-8")
     print(f"[create-tile] Written run_config.yaml")
 
-    # 8. Create src/rtl/ and src/tb/ with .gitkeep + tb template
+    # 8. Create src/rtl/ and src/tb/ with .gitkeep + tb templates
     import shutil
     template_dir = Path(__file__).parent.parent / "template"
     for sub in ("src/rtl", "src/tb"):
         d = config_tile_dir / sub
         d.mkdir(parents=True, exist_ok=True)
         (d / ".gitkeep").touch()
-    # Copy user-facing tb template into src/tb/
-    tb_template = template_dir / "tb_tile_template.v"
-    if tb_template.exists():
-        shutil.copy2(tb_template, config_tile_dir / "src" / "tb" / "tb_tile.v")
-    print(f"[create-tile] Created src/rtl/ and src/tb/ (with tb_tile.v template)")
+
+    tb_dir = config_tile_dir / "src" / "tb"
+    if project_config.semicolab:
+        # Semicolab mode: copy tb_base.v as tb_tile.v (full wrapper visible to user)
+        # and tb_tasks.v as separate task library
+        tb_base = template_dir / "tb_base.v"
+        tb_tasks = template_dir / "tb_tasks.v"
+        if tb_base.exists():
+            shutil.copy2(tb_base, tb_dir / "tb_tile.v")
+        if tb_tasks.exists():
+            shutil.copy2(tb_tasks, tb_dir / "tb_tasks.v")
+        print(f"[create-tile] Created src/rtl/ and src/tb/ (semicolab: tb_tile.v + tb_tasks.v)")
+    else:
+        # Universal mode: copy empty TB template
+        tb_universal = template_dir / "tb_universal_template.v"
+        if tb_universal.exists():
+            shutil.copy2(tb_universal, tb_dir / "tb_tile.v")
+        print(f"[create-tile] Created src/rtl/ and src/tb/ (universal: empty tb_tile.v)")
 
     # 9. Create tiles/<tile_id>/
     tile_dir = db / "tiles" / tile_id
@@ -127,6 +140,7 @@ def cmd_create_tile(db: Path) -> None:
         "tile_author": "",
         "version": f"{id_version:02d}",
         "revision": f"{id_revision:02d}",
+        "semicolab": "true" if project_config.semicolab else "false",
     })
     print(f"[create-tile] Appended row to tile_index.csv")
 

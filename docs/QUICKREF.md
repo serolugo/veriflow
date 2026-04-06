@@ -40,10 +40,21 @@ python -m veriflow.tests.runner
 
 ---
 
+## Operating Modes
+
+Set in `database/project_config.yaml`. Applies to the entire database.
+
+| Field | Description |
+|---|---|
+| `semicolab: true` | SemiCoLab mode — fixed port convention, connectivity check enabled |
+| `semicolab: false` | Universal mode — any RTL module, no connectivity check |
+
+---
+
 ## Workflow
 
 ```
-init → fill project_config.yaml
+init → fill project_config.yaml (set semicolab: true or false)
      → create-tile
      → fill tile_config.yaml
      → add RTL to src/rtl/<top_module>.v
@@ -62,12 +73,14 @@ database/config/tile_0001/
 ├── run_config.yaml      ← author, objective, run notes
 └── src/
     ├── rtl/<top_module>.v   ← user RTL
-    └── tb/tb_tile.v         ← test between the markers
+    └── tb/tb_tile.v         ← test file
 ```
 
 ---
 
-## Test file structure (tb_tile.v)
+## Semicolab test file (tb_tile.v)
+
+Write stimuli between the markers — VeriFlow handles everything else:
 
 ```verilog
 // USER TEST STARTS HERE //
@@ -78,9 +91,25 @@ $display("result = %0d", data_reg_c);
 // USER TEST ENDS HERE //
 ```
 
+## Universal test file (tb_tile.v)
+
+Write a complete testbench — top module must be named `tb`:
+
+```verilog
+`timescale 1ns / 1ps
+module tb;
+  // your signals, DUT instantiation and test here
+  initial begin
+    $finish;
+  end
+endmodule
+```
+
+> `$dumpfile` / `$dumpvars` are injected automatically if not present.
+
 ---
 
-## Available tasks in the testbench
+## Available tasks (semicolab mode only)
 
 | Task | Description |
 |---|---|
@@ -98,7 +127,7 @@ $display("result = %0d", data_reg_c);
 
 | Status | Condition |
 |---|---|
-| `PASS` | Connectivity PASS + Simulation COMPLETED + Synthesis PASS |
+| `PASS` | All executed stages passed |
 | `PARTIAL` | At least one stage was SKIPPED |
 | `FAIL` | Connectivity FAIL or Synthesis FAIL |
 
