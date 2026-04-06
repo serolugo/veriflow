@@ -82,14 +82,32 @@ def cmd_run(
     tile_config = TileConfig.from_dict(yaml.safe_load(tile_cfg_path.read_text(encoding="utf-8")) or {})
     run_config = RunConfig.from_dict(yaml.safe_load(run_cfg_path.read_text(encoding="utf-8")) or {})
 
+    # Read project config for semicolab flag
+    from veriflow.models.project_config import ProjectConfig
+    project_cfg_path = db / "project_config.yaml"
+    project_config = ProjectConfig.from_dict(yaml.safe_load(project_cfg_path.read_text(encoding="utf-8")) or {})
+    semicolab = project_config.semicolab
+
+    # In non-semicolab mode, skip connectivity check automatically
+    if not semicolab and not only_check:
+        skip_check = True
+
     validate_run_inputs(db, tile_number_str, tile_config)
 
-    # ── 3. Look up tile_id
+    # ── 3. Look up tile_id and sync tile_name/tile_author from tile_config
     tile_index_path = db / "tile_index.csv"
     tile_row = get_tile_row(tile_index_path, tile_number_str)
     tile_id = tile_row["tile_id"]
     id_version = tile_row["version"]
     id_revision = tile_row["revision"]
+
+    # Keep tile_index in sync with tile_config
+    if tile_config.tile_name or tile_config.tile_author:
+        from veriflow.core.csv_store import update_tile_index
+        updated_row = dict(tile_row)
+        updated_row["tile_name"] = tile_config.tile_name
+        updated_row["tile_author"] = tile_config.tile_author
+        update_tile_index(tile_index_path, tile_number_str, updated_row)
 
     tile_dir = db / "tiles" / tile_id
     runs_dir = tile_dir / "runs"
@@ -130,13 +148,18 @@ def cmd_run(
         skip_sim = True
 
     # ── Template files
-    template_dir = _tool_dir()
-    tb_base_path = template_dir / "tb_base.v"
-    tb_tasks_path = template_dir / "tb_tasks.v"
-    if not tb_base_path.exists():
-        raise VeriFlowError(f"tb_base.v not found: {tb_base_path}")
-    if not tb_tasks_path.exists():
-        raise VeriFlowError(f"tb_tasks.v not found: {tb_tasks_path}")
+    # In semicolab mode, tb_base.v and tb_tasks.v live in src/tb/
+    # In universal mode, tb_tile.v is compiled directly — no injection needed
+    if semicolab:
+        tb_base_path = run_dir / "src" / "tb" / "tb_tile.v"
+        tb_tasks_path = run_dir / "src" / "tb" / "tb_tasks.v"
+        if not tb_base_path.exists():
+            raise VeriFlowError(f"tb_tile.v not found in src/tb/: {tb_base_path}")
+        if not tb_tasks_path.exists():
+            raise VeriFlowError(f"tb_tasks.v not found in src/tb/: {tb_tasks_path}")
+    else:
+        tb_base_path = None
+        tb_tasks_path = None
 
     # ── Detect tool version
     iverilog_version = detect_iverilog_version()
@@ -178,6 +201,7 @@ def cmd_run(
                 conn_log_path=conn_log_path, sim_log_path=sim_log_path,
                 synth_log_path=synth_log_path, wave_path=wave_path,
                 tile_index_path=db / "tile_index.csv",
+                semicolab=semicolab,
             )
             return
 
@@ -187,11 +211,12 @@ def cmd_run(
         sim_result, sim_parsed = run_simulation(
             rtl_files=rtl_files,
             tb_files=tb_files,
-            tb_base_path=tb_base_path,
-            tb_tasks_path=tb_tasks_path,
+            tb_base_path=tb_base_path,        # None in universal mode
+            tb_tasks_path=tb_tasks_path,      # None in universal mode
             top_module=tile_config.top_module,
             sim_log_path=sim_log_path,
             wave_path=wave_path,
+            semicolab=semicolab,
         )
         print(f"[run] Simulation: {sim_result}")
 
@@ -213,6 +238,7 @@ def cmd_run(
         id_version=id_version, id_revision=id_revision,
         rtl_files=rtl_files, tb_files=tb_files,
         conn_result=conn_result, sim_result=sim_result, synth_result=synth_result,
+        semicolab=semicolab,
         sim_parsed=sim_parsed, synth_parsed=synth_parsed,
         iverilog_version=iverilog_version,
         conn_log_path=conn_log_path, sim_log_path=sim_log_path,
@@ -273,6 +299,7 @@ def _finalize_run(
     synth_log_path: Path,
     wave_path: Path,
     tile_index_path: Path,
+    semicolab: bool = True,
 ) -> None:
     """Generate all documentation, update CSV, print summary."""
 
@@ -380,6 +407,7 @@ def _finalize_run(
         "Main_Change": run_config.main_change,
         "Run_Path": run_path_rel,
         "Tags": run_config.tags,
+        "Semicolab": "true" if semicolab else "false",
     })
     print(f"[run] Appended row to records.csv")
 

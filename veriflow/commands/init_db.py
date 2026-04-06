@@ -7,6 +7,7 @@ _PROJECT_CONFIG_TEMPLATE = """\
 id_prefix: ""
 project_name: ""
 repo: ""
+semicolab: true
 description: |
   
 """

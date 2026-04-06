@@ -81,11 +81,16 @@ Edit `database/project_config.yaml`:
 id_prefix: "MST130-01"       # prefix for Tile IDs
 project_name: "My Chip"
 repo: "https://github.com/user/repo"
+semicolab: true               # true = SemiCoLab mode, false = Universal mode
 description: |
   Chip project description.
 ```
 
 The `id_prefix` field is required — tiles cannot be created without it.
+
+The `semicolab` field controls the operating mode for the entire database:
+- `true` — SemiCoLab mode: fixed 9-port convention, connectivity check enabled, testbench wrapper managed by VeriFlow
+- `false` — Universal mode: any RTL module, no connectivity check, user writes the full testbench
 
 ---
 
@@ -161,7 +166,11 @@ endmodule
 
 ### 5.4 Write the testbench
 
-Edit `database/config/tile_0001/src/tb/tb_tile.v`. Only write code between the markers:
+The testbench file depends on the operating mode set in `project_config.yaml`.
+
+**SemiCoLab mode (`semicolab: true`)**
+
+Edit `src/tb/tb_tile.v` and write only your stimuli between the markers — VeriFlow handles the module wrapper, clock, reset, and DUT instantiation automatically:
 
 ```verilog
 // USER TEST STARTS HERE //
@@ -170,6 +179,31 @@ write_data_reg_b(32'd20);
 @(posedge clk);
 $display("result = %0d", data_reg_c);  // expected: 30
 // USER TEST ENDS HERE //
+```
+
+**Universal mode (`semicolab: false`)**
+
+Edit `src/tb/tb_tile.v` and write a complete testbench. The top module must be named `tb`. VeriFlow will inject `$dumpfile`/`$dumpvars` automatically if not present:
+
+```verilog
+`timescale 1ns / 1ps
+module tb;
+    reg clk;
+    reg rst_n;
+    wire [7:0] result;
+
+    my_module DUT (.clk(clk), .rst_n(rst_n), .result(result));
+
+    always #5 clk = ~clk;
+
+    initial begin
+        clk = 0; rst_n = 0;
+        #20 rst_n = 1;
+        #100;
+        $display("result = %0d", result);
+        $finish;
+    end
+endmodule
 ```
 
 **Available tasks:**

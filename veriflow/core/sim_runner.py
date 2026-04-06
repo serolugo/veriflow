@@ -1,11 +1,20 @@
+import re
 import subprocess
 import tempfile
 from pathlib import Path
 
 from veriflow.core.log_parser import parse_sim_log
 
-USER_TEST_PLACEHOLDER = "/* USER_TEST */"
+USER_TEST_PLACEHOLDER   = "/* USER_TEST */"
 MODULE_INST_PLACEHOLDER = "/* MODULE_INSTANTIATION */"
+
+_DUMPFILE_INJECT = """\
+
+initial begin
+    $dumpfile("waves.vcd");
+    $dumpvars(0, tb);
+end
+"""
 
 
 def _build_dut_inst(top_module: str) -> str:
@@ -22,6 +31,25 @@ def _build_dut_inst(top_module: str) -> str:
 );"""
 
 
+def _ensure_dumpfile(content: str) -> str:
+    """
+    If the TB content does not already contain a $dumpfile call,
+    inject one right after the first 'module <name>;' or 'module <name> (...);' line.
+    This ensures waveforms are always generated regardless of what the user wrote.
+    """
+    if "$dumpfile" in content:
+        return content
+
+    # Find end of module declaration (after the semicolon closing it)
+    m = re.search(r"(module\s+\w+[^;]*;)", content)
+    if m:
+        insert_pos = m.end()
+        return content[:insert_pos] + _DUMPFILE_INJECT + content[insert_pos:]
+
+    # Fallback: prepend at the start of the file
+    return _DUMPFILE_INJECT + content
+
+
 def _read_user_test(tb_files: list[Path]) -> str:
     """
     Collect user test code from all files in src/tb/.
@@ -29,7 +57,6 @@ def _read_user_test(tb_files: list[Path]) -> str:
     the raw statements inside // USER TEST STARTS HERE // markers if present,
     otherwise includes the full file content.
     """
-    import re
     parts = []
     for f in tb_files:
         content = f.read_text(encoding="utf-8")
@@ -58,7 +85,7 @@ def _inject_tb(
     tb_files: list[Path],
 ) -> Path:
     """
-    Read tb_base.v and inject:
+    Read tb_base.v (tb_tile.v in semicolab mode) and inject:
       1. DUT instantiation at /* MODULE_INSTANTIATION */
       2. User test code at /* USER_TEST */
     Write result to a temporary file and return its path.
@@ -71,6 +98,29 @@ def _inject_tb(
     # Inject user test
     user_test = _read_user_test(tb_files) if tb_files else ""
     content = content.replace(USER_TEST_PLACEHOLDER, user_test)
+
+    tmp = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".v",
+        delete=False,
+        encoding="utf-8",
+    )
+    tmp.write(content)
+    tmp.close()
+    return Path(tmp.name)
+
+
+def _prepare_universal_tb(tb_files: list[Path]) -> Path:
+    """
+    For universal mode: read tb_tile.v, ensure $dumpfile is present,
+    write to a temporary file and return its path.
+    """
+    if not tb_files:
+        raise ValueError("No TB files found for universal mode simulation")
+
+    # Use the first tb file as the main TB
+    content = tb_files[0].read_text(encoding="utf-8")
+    content = _ensure_dumpfile(content)
 
     tmp = tempfile.NamedTemporaryFile(
         mode="w",
@@ -118,11 +168,12 @@ def run_connectivity_check(
 def run_simulation(
     rtl_files: list[Path],
     tb_files: list[Path],
-    tb_base_path: Path,
-    tb_tasks_path: Path,
+    tb_base_path,
+    tb_tasks_path,
     top_module: str,
     sim_log_path: Path,
     wave_path: Path,
+    semicolab: bool = True,
 ) -> tuple[str, dict]:
     """
     Compile and run simulation using iverilog/vvp.
@@ -132,19 +183,22 @@ def run_simulation(
     sim_log_path.parent.mkdir(parents=True, exist_ok=True)
     wave_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Inject DUT + user test into a single tb file
-    tmp_tb = _inject_tb(tb_base_path, top_module, tb_files=tb_files)
-    include_dir = tb_tasks_path.parent
+    if semicolab:
+        # Semicolab mode: inject DUT + user test into tb_tile.v (tb_base)
+        tmp_tb = _inject_tb(tb_base_path, top_module, tb_files=tb_files)
+        include_dir = tb_tasks_path.parent if tb_tasks_path else None
+    else:
+        # Universal mode: ensure $dumpfile is present, compile directly
+        tmp_tb = _prepare_universal_tb(tb_files)
+        include_dir = None
 
-    import tempfile, os
     tmp_dir = Path(tempfile.mkdtemp())
     compiled = tmp_dir / "sim.out"
 
     try:
-        # Compile — only RTL files + the injected TB
         compile_cmd = (
             ["iverilog", "-o", compiled.as_posix()]
-            + ["-I", include_dir.as_posix()]
+            + (["-I", include_dir.as_posix()] if include_dir else [])
             + [f.as_posix() for f in rtl_files]
             + [Path(tmp_tb).as_posix()]
         )
@@ -176,7 +230,31 @@ def run_simulation(
 
 def launch_gtkwave(wave_path: Path) -> None:
     """Launch GTKWave with the given VCD file (non-blocking)."""
-    subprocess.Popen(["gtkwave", str(wave_path)])
+    import platform, shutil, os
+    gtkwave_path = shutil.which("gtkwave")
+    if not gtkwave_path:
+        print("[waves] GTKWave not found in PATH")
+        return
+
+    if platform.system() == "Windows":
+        # On Windows, GTKWave needs the OSS CAD Suite env vars to load its GTK libs.
+        # Detect the OSS CAD Suite root from gtkwave location and set required vars.
+        env = os.environ.copy()
+        oss_root = Path(gtkwave_path).parent.parent  # .../oss-cad-suite/
+        lib_dir = oss_root / "lib"
+        pixbuf_dir = lib_dir / "gdk-pixbuf-2.0" / "2.10.0"
+        loaders_cache = pixbuf_dir / "loaders.cache"
+        if loaders_cache.exists():
+            env["GDK_PIXBUF_MODULE_FILE"] = str(loaders_cache)
+            env["GDK_PIXBUF_MODULEDIR"] = str(pixbuf_dir / "loaders")
+        env["GTK_EXE_PREFIX"] = str(oss_root)
+        env["GTK_DATA_PREFIX"] = str(oss_root)
+        subprocess.Popen(
+            [gtkwave_path, str(wave_path)],
+            env=env,
+        )
+    else:
+        subprocess.Popen(["gtkwave", str(wave_path)])
 
 
 def _is_unix() -> bool:
