@@ -81,16 +81,11 @@ Edit `database/project_config.yaml`:
 id_prefix: "MST130-01"       # prefix for Tile IDs
 project_name: "My Chip"
 repo: "https://github.com/user/repo"
-semicolab: true               # true = SemiCoLab mode, false = Universal mode
 description: |
   Chip project description.
 ```
 
 The `id_prefix` field is required — tiles cannot be created without it.
-
-The `semicolab` field controls the operating mode for the entire database:
-- `true` — SemiCoLab mode: fixed 9-port convention, connectivity check enabled, testbench wrapper managed by VeriFlow
-- `false` — Universal mode: any RTL module, no connectivity check, user writes the full testbench
 
 ---
 
@@ -166,24 +161,26 @@ endmodule
 
 ### 5.4 Write the testbench
 
-The testbench file depends on the operating mode set in `project_config.yaml`.
-
 **SemiCoLab mode (`semicolab: true`)**
 
-Edit `src/tb/tb_tile.v` and write only your stimuli between the markers — VeriFlow handles the module wrapper, clock, reset, and DUT instantiation automatically:
+`tb_tile.v` is created with the full testbench wrapper already in place. Write your stimuli between the markers — do not modify the rest of the file:
 
 ```verilog
-// USER TEST STARTS HERE //
-write_data_reg_a(32'd10);
-write_data_reg_b(32'd20);
-@(posedge clk);
-$display("result = %0d", data_reg_c);  // expected: 30
-// USER TEST ENDS HERE //
+    // USER TEST STARTS HERE //
+    write_data_reg_a(32'd10);
+    write_data_reg_b(32'd20);
+    @(posedge clk);
+    $display("result = %0d", data_reg_c);  // expected: 30
+    // USER TEST ENDS HERE //
 ```
+
+VeriFlow reads `tb_tile.v`, extracts the code between the markers, and injects it at runtime along with the DUT instantiation. The module wrapper, signals, clock, reset and tasks are all handled automatically.
+
+> If `tb_tile.v` is not present in `src/tb/`, simulation is automatically skipped.
 
 **Universal mode (`semicolab: false`)**
 
-Edit `src/tb/tb_tile.v` and write a complete testbench. The top module must be named `tb`. VeriFlow will inject `$dumpfile`/`$dumpvars` automatically if not present:
+Write a complete testbench. Top module must be named `tb`. VeriFlow injects `$dumpfile`/`$dumpvars` automatically if not present:
 
 ```verilog
 `timescale 1ns / 1ps

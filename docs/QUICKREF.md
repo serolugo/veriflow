@@ -25,6 +25,7 @@ python veriflow/cli.py --db ./database run --tile 0001
 python veriflow/cli.py --db ./database run --tile 0001 --waves
 python veriflow/cli.py --db ./database run --tile 0001 --skip-synth
 python veriflow/cli.py --db ./database run --tile 0001 --only-check
+python veriflow/cli.py --db ./database run --tile 0001 --skip-sim
 
 # Open waveforms
 python veriflow/cli.py --db ./database waves --tile 0001
@@ -58,7 +59,7 @@ init → fill project_config.yaml (set semicolab: true or false)
      → create-tile
      → fill tile_config.yaml
      → add RTL to src/rtl/<top_module>.v
-     → edit test in src/tb/tb_tile.v
+     → write test in src/tb/tb_tile.v between the markers
      → fill run_config.yaml
      → run --tile XXXX --waves
 ```
@@ -69,31 +70,40 @@ init → fill project_config.yaml (set semicolab: true or false)
 
 ```
 database/config/tile_0001/
-├── tile_config.yaml     ← name, author, top_module, description
-├── run_config.yaml      ← author, objective, run notes
+├── tile_config.yaml        ← name, author, top_module, description
+├── run_config.yaml         ← author, objective, run notes
 └── src/
-    ├── rtl/<top_module>.v   ← user RTL
-    └── tb/tb_tile.v         ← test file
+    ├── rtl/<top_module>.v  ← user RTL
+    └── tb/
+        ├── tb_tile.v       ← write test here between the markers
+        └── tb_tasks.v      ← task library (do not edit, semicolab only)
 ```
+
+> If no `tb_tile.v` is present, simulation is automatically skipped.
 
 ---
 
-## Semicolab test file (tb_tile.v)
+## Semicolab testbench (tb_tile.v)
 
-Write stimuli between the markers — VeriFlow handles everything else:
+`tb_tile.v` contains the full testbench wrapper. Write your stimuli between the markers only:
 
 ```verilog
-// USER TEST STARTS HERE //
-write_data_reg_a(32'd1);
-write_data_reg_b(32'd1);
-@(posedge clk);
-$display("result = %0d", data_reg_c);
-// USER TEST ENDS HERE //
+    // USER TEST STARTS HERE //
+    write_data_reg_a(32'd1);
+    write_data_reg_b(32'd1);
+    @(posedge clk);
+    $display("result = %0d", data_reg_c);
+    // USER TEST ENDS HERE //
 ```
 
-## Universal test file (tb_tile.v)
+VeriFlow extracts the code between the markers and injects it at runtime.
+Do not modify the rest of the file (module wrapper, signals, clock, reset, DUT instantiation).
 
-Write a complete testbench — top module must be named `tb`:
+---
+
+## Universal testbench (tb_tile.v)
+
+Write a complete testbench. Top module must be named `tb`:
 
 ```verilog
 `timescale 1ns / 1ps

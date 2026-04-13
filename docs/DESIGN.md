@@ -228,10 +228,7 @@ class ProjectConfig:
     project_name: str
     repo: str
     description: str
-    semicolab: bool = True  # True = SemiCoLab mode, False = Universal mode
 ```
-
-The `semicolab` field defaults to `True`. Accepts `true`/`false` in YAML. Parsed via `from_dict` which normalizes string values (`"false"`, `"0"`, `"no"` → `False`).
 
 ### `TileConfig`
 ```python

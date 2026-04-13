@@ -44,12 +44,30 @@ python veriflow/cli.py --db ./database run --tile 0001 --waves
 
 ## Operating Modes
 
-Configured via `semicolab` field in `project_config.yaml`. Applies to the entire database.
+Configured via `semicolab` in `project_config.yaml`. Applies to the entire database.
 
 | Mode | `semicolab` | Connectivity Check | Testbench |
 |---|---|---|---|
-| SemiCoLab | `true` | ✓ Enabled | Stimuli only — VeriFlow handles the wrapper |
-| Universal | `false` | ✗ Skipped | Full testbench — user writes `module tb` |
+| SemiCoLab | `true` | ✓ Enabled | Write stimuli in `tb_tile.v` between markers |
+| Universal | `false` | ✗ Skipped | Write full `module tb` in `tb_tile.v` |
+
+---
+
+## SemiCoLab Testbench
+
+`tb_tile.v` is created with the full testbench wrapper on `create-tile`. Write your stimuli between the markers — do not modify the rest:
+
+```verilog
+    // USER TEST STARTS HERE //
+    write_data_reg_a(32'd1);
+    write_data_reg_b(32'd1);
+    @(posedge clk);
+    $display("result = %0d", data_reg_c);
+    // USER TEST ENDS HERE //
+```
+
+VeriFlow extracts the code between the markers and injects it at runtime along with the DUT instantiation.
+If no `tb_tile.v` is present, simulation is automatically skipped.
 
 ---
 
@@ -58,7 +76,7 @@ Configured via `semicolab` field in `project_config.yaml`. Applies to the entire
 ```bash
 python veriflow/cli.py --db ./database init
 python veriflow/cli.py --db ./database create-tile
-python veriflow/cli.py --db ./database run --tile 0001 [--waves] [--skip-synth] [--only-check]
+python veriflow/cli.py --db ./database run --tile 0001 [--waves] [--skip-synth] [--skip-sim] [--only-check]
 python veriflow/cli.py --db ./database waves --tile 0001 [--run run-003]
 python veriflow/cli.py --db ./database bump-version --tile 0001
 python veriflow/cli.py --db ./database bump-revision --tile 0001
