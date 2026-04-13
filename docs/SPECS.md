@@ -63,7 +63,7 @@ veriflow/
 │   ├── ip_tile.v
 │   ├── tb_base.v
 │   ├── tb_tasks.v
-│   └── tb_universal_template.v
+│   └── tb_tile_template.v
 └── tests/
     ├── runner.py
     └── test_veriflow.py
@@ -89,8 +89,8 @@ database/
     └── <tile_id>/            # Generated artifacts per tile
         ├── README.md
         ├── works/            # Latest verified sources
-        │   ├── rtl/
-        │   └── tb/
+│       ├── rtl/
+│       └── tb/
         └── runs/
             └── run-NNN/
                 ├── manifest.yaml
@@ -107,32 +107,7 @@ database/
 
 ---
 
-## 5. Operating Modes
-
-VeriFlow supports two operating modes controlled by the `semicolab` field in `project_config.yaml`. The mode applies to the entire database — a single database cannot mix both modes.
-
-### Semicolab Mode (`semicolab: true`)
-
-Designed for the SemiCoLab multi-project ASIC platform. Enforces a fixed 9-port interface on all tiles.
-
-- Connectivity check is enabled
-- `tb_tile.v` (full testbench wrapper) and `tb_tasks.v` are copied to `src/tb/` on `create-tile`
-- VeriFlow injects the DUT instantiation and user test code automatically at runtime
-- The user only writes stimuli between the `// USER TEST STARTS HERE //` markers
-
-### Universal Mode (`semicolab: false`)
-
-For general-purpose RTL verification with any module interface.
-
-- Connectivity check is skipped
-- An empty `tb_tile.v` template is copied to `src/tb/` on `create-tile`
-- The user writes a complete testbench (`module tb`) with their own ports and stimuli
-- VeriFlow automatically injects `$dumpfile`/`$dumpvars` if not present
-- The top testbench module must be named `tb`
-
----
-
-## 6. CLI Interface
+## 5. CLI Interface
 
 ```bash
 python veriflow/cli.py --db <path> <command> [options]
@@ -161,7 +136,7 @@ python veriflow/cli.py --db <path> <command> [options]
 
 ---
 
-## 7. Tile ID Format
+## 6. Tile ID Format
 
 ```
 <id_prefix>-<YYMMDD><tile_number><id_version><id_revision>
@@ -179,7 +154,7 @@ Example: `MST130-01-26032500010102`
 
 ---
 
-## 8. Version Hierarchy
+## 7. Version Hierarchy
 
 - **version** — internal increment. The designer uses this to mark development iterations.
 - **revision** — major increment. Represents a formal authorization by the advisor.
@@ -195,14 +170,13 @@ The new directory inherits `works/` from the previous one and starts with an emp
 
 ---
 
-## 9. Configuration Files
+## 8. Configuration Files
 
 ### `project_config.yaml`
 ```yaml
 id_prefix: ""
 project_name: ""
 repo: ""
-semicolab: true
 description: |
 ```
 
@@ -210,7 +184,7 @@ description: |
 ```yaml
 tile_name: ""
 tile_author: ""
-top_module: ""
+top_module: ""        # must match the RTL module name exactly
 description: |
 ports: |
 usage_guide: |
@@ -228,31 +202,32 @@ notes: |
 
 ---
 
-## 10. CSV Files
+## 9. CSV Files
 
 ### `tile_index.csv`
 ```
-tile_number, tile_id, tile_name, tile_author, version, revision, semicolab
+tile_number, tile_id, tile_name, tile_author, version, revision
 ```
 - One row per tile
-- Updated on every bump and synced with `tile_config.yaml` on every run
+- Updated on every bump
 - Source of truth for resolving tile_number → current tile_id
 
 ### `records.csv`
 ```
 Tile_ID, Run_ID, Date, Author, Objective, Status,
 Version, Revision, Connectivity, Simulation, Synthesis,
-Tool_Version, Main_Change, Run_Path, Tags, Semicolab
+Tool_Version, Main_Change, Run_Path, Tags
 ```
 - One row appended per run
 - `Run_Path` relative to `tiles/`
+- Queryable by an LLM for historical analysis
 
 ---
 
-## 11. Verification Pipeline
+## 10. Verification Pipeline
 
 ```
-[Connectivity Check] → FAIL → document and stop   (semicolab: true only)
+[Connectivity Check] → FAIL → document and stop
         ↓ PASS
 [Simulation]         → FAILED → document, continue
         ↓
@@ -271,14 +246,20 @@ Tool_Version, Main_Change, Run_Path, Tags, Semicolab
 
 ---
 
-## 12. Testbench Architecture
+## 11. Testbench Architecture
 
 ### Semicolab mode
-VeriFlow never modifies user files. Instead:
-1. Reads `tb_tile.v` from `src/tb/` (the full wrapper template)
+`tb_tile.v` (copied to `src/tb/` on `create-tile`) is both the testbench wrapper and the user test file. VeriFlow:
+
+1. Reads `tb_tile.v` from `src/tb/` in the run snapshot
 2. Replaces `/* MODULE_INSTANTIATION */` with the auto-generated DUT instantiation
-3. Replaces `/* USER_TEST */` with content extracted from between the user test markers
-4. Writes the result to a temporary file, compiles, then deletes it
+3. Extracts code between `// USER TEST STARTS HERE //` and `// USER TEST ENDS HERE //` from the same file
+4. Replaces `/* USER_TEST */` with the extracted code
+5. Writes the result to a temporary file, compiles, then deletes it
+
+The user only edits the section between the markers. The rest of `tb_tile.v` is managed by VeriFlow and should not be modified.
+
+If `tb_tile.v` is not present in `src/tb/`, simulation is skipped automatically. The connectivity check still runs using `tb_base.v` from the tool `template/` directory.
 
 ### Universal mode
 1. Reads `tb_tile.v` from `src/tb/`
@@ -289,7 +270,7 @@ VeriFlow never modifies user files. Instead:
 
 ---
 
-## 13. Validation Rules
+## 12. Validation Rules
 
 ### Hard errors (stop execution)
 - `project_config.yaml` not found
@@ -297,8 +278,7 @@ VeriFlow never modifies user files. Instead:
 - `tiles/` not found
 - `tile_config.yaml` or `run_config.yaml` not found
 - `src/rtl/` empty or no `.v` files
-- `tb_tile.v` not found in `src/tb/` (semicolab mode)
-- `tb_tasks.v` not found in `src/tb/` (semicolab mode)
+- `tb_tile.v` not found in `src/tb/` when simulation will run (semicolab mode)
 - `id_prefix` empty in `project_config.yaml`
 - `top_module` empty in `tile_config.yaml`
 - No `.v` file whose stem matches `top_module`
@@ -314,7 +294,7 @@ VeriFlow never modifies user files. Instead:
 
 ---
 
-## 14. Files Generated Per Run
+## 13. Files Generated Per Run
 
 | File | Description |
 |---|---|
@@ -325,7 +305,7 @@ VeriFlow never modifies user files. Instead:
 
 ---
 
-## 15. Tests
+## 14. Tests
 
 Standalone suite at `tests/runner.py`. Does not require pytest.
 
@@ -333,14 +313,11 @@ Standalone suite at `tests/runner.py`. Does not require pytest.
 python -m veriflow.tests.runner
 ```
 
-26 integration tests covering:
+22 integration tests covering:
 - Tile ID generation and parsing
 - Run ID generation
-- init, create-tile, run, bump-version, bump-revision, waves commands
+- init, create-tile, run, bump-version, bump-revision commands
 - CSV validation (header, empty file)
 - Flat copy with collision resolution
 - Validation errors
 - Manifest serialization
-- Semicolab mode — TB file creation
-- Universal mode — TB file creation
-- Semicolab column in tile_index and records

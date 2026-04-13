@@ -53,12 +53,16 @@ def _ensure_dumpfile(content: str) -> str:
 def _read_user_test(tb_files: list[Path]) -> str:
     """
     Collect user test code from all files in src/tb/.
+    Skips tb_tasks.v (already included via `include in the wrapper).
     Strips timescale, module declarations, and endmodule — only keeps
     the raw statements inside // USER TEST STARTS HERE // markers if present,
     otherwise includes the full file content.
     """
     parts = []
     for f in tb_files:
+        # Skip tb_tasks.v — already included via `include in tb_tile.v
+        if f.name == "tb_tasks.v":
+            continue
         content = f.read_text(encoding="utf-8")
 
         # If file has USER TEST markers, extract only what's between them
@@ -95,8 +99,9 @@ def _inject_tb(
     # Inject DUT
     content = content.replace(MODULE_INST_PLACEHOLDER, _build_dut_inst(top_module))
 
-    # Inject user test
-    user_test = _read_user_test(tb_files) if tb_files else ""
+    # Extract user test from tb_tile.v markers (same file as the wrapper)
+    # This is the primary source — user writes test directly in tb_tile.v
+    user_test = _read_user_test([tb_base_path])
     content = content.replace(USER_TEST_PLACEHOLDER, user_test)
 
     tmp = tempfile.NamedTemporaryFile(
@@ -185,7 +190,9 @@ def run_simulation(
 
     if semicolab:
         # Semicolab mode: inject DUT + user test into tb_tile.v (tb_base)
-        tmp_tb = _inject_tb(tb_base_path, top_module, tb_files=tb_files)
+        # Exclude tb_tasks.v from tb_files — it is already included via `include in the wrapper
+        user_tb_files = [f for f in tb_files if f.name not in ("tb_tasks.v", "tb_tile.v")]
+        tmp_tb = _inject_tb(tb_base_path, top_module, tb_files=user_tb_files)
         include_dir = tb_tasks_path.parent if tb_tasks_path else None
     else:
         # Universal mode: ensure $dumpfile is present, compile directly
