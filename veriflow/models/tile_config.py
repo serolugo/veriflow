@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 @dataclass
 class TileConfig:
+    # ── Tile (permanent) ──────────────────────────────────────────────────────
     tile_name: str
     tile_author: str
     top_module: str
@@ -10,6 +11,12 @@ class TileConfig:
     ports: str
     usage_guide: str
     tb_description: str
+    # ── Run (updated each run) ────────────────────────────────────────────────
+    run_author: str
+    objective: str
+    tags: str
+    main_change: str
+    notes: str
 
     @classmethod
     def from_dict(cls, data: dict) -> "TileConfig":
@@ -21,4 +28,9 @@ class TileConfig:
             ports=data.get("ports", "") or "",
             usage_guide=data.get("usage_guide", "") or "",
             tb_description=data.get("tb_description", "") or "",
+            run_author=data.get("run_author", "") or "",
+            objective=data.get("objective", "") or "",
+            tags=data.get("tags", "") or "",
+            main_change=data.get("main_change", "") or "",
+            notes=data.get("notes", "") or "",
         )

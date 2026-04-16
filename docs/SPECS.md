@@ -80,8 +80,7 @@ database/
 ├── records.csv               # Full run history
 ├── config/
 │   └── tile_XXXX/            # User-editable tile configuration
-│       ├── tile_config.yaml
-│       ├── run_config.yaml
+│       └── tile_config.yaml     # tile + run fields merged
 │       └── src/
 │           ├── rtl/          # User RTL sources
 │           └── tb/           # User test code
@@ -276,7 +275,7 @@ If `tb_tile.v` is not present in `src/tb/`, simulation is skipped automatically.
 - `project_config.yaml` not found
 - `tile_index.csv` or `records.csv` not found
 - `tiles/` not found
-- `tile_config.yaml` or `run_config.yaml` not found
+- `tile_config.yaml` not found
 - `src/rtl/` empty or no `.v` files
 - `tb_tile.v` not found in `src/tb/` when simulation will run (semicolab mode)
 - `id_prefix` empty in `project_config.yaml`

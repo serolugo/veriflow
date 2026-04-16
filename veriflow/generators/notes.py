@@ -1,13 +1,13 @@
 from pathlib import Path
 
-from veriflow.models.run_config import RunConfig
+from veriflow.models.tile_config import TileConfig
 from veriflow.models.tile_config import TileConfig
 
 
 def generate_notes(
     tile_id: str,
     tile_config: TileConfig,
-    run_config: RunConfig,
+    run_config: TileConfig,
     output_path: Path,
 ) -> None:
     content = f"""# Tile ID : "{tile_id}"

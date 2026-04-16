@@ -82,16 +82,18 @@ def _fill_tile_config(db: Path, tile_number_str: str, module_name: str = "my_til
 
 
 def _fill_run_config(db: Path, tile_number_str: str) -> None:
+    """Merge run fields into tile_config.yaml (now a single file)."""
     import yaml
-    cfg_path = db / "config" / f"tile_{tile_number_str}" / "run_config.yaml"
-    cfg = {
+    cfg_path = db / "config" / f"tile_{tile_number_str}" / "tile_config.yaml"
+    raw = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    raw.update({
         "run_author": "Tester",
         "objective": "Test run",
         "tags": "test",
         "main_change": "Initial.",
         "notes": "No notes.",
-    }
-    cfg_path.write_text(yaml.dump(cfg, default_flow_style=False), encoding="utf-8")
+    })
+    cfg_path.write_text(yaml.dump(raw, default_flow_style=False), encoding="utf-8")
 
 
 # ── test functions ────────────────────────────────────────────────────────────
@@ -195,7 +197,6 @@ def test_create_tile_structure():
         cfg_dir = db / "config" / "tile_0001"
         assert cfg_dir.exists()
         assert (cfg_dir / "tile_config.yaml").exists()
-        assert (cfg_dir / "run_config.yaml").exists()
         assert (cfg_dir / "src" / "rtl").is_dir()
         assert (cfg_dir / "src" / "tb").is_dir()
 

@@ -13,29 +13,44 @@ from veriflow.models.tile_config import TileConfig
 
 
 _TILE_CONFIG_TEMPLATE = """\
-tile_name: ""
-tile_author: ""
-top_module: ""
+# =============================================================================
+# TILE INFORMATION  (permanent -- fill once)
+# =============================================================================
+
+tile_name: ""       # Display name for this tile
+tile_author: ""     # Your full name
+top_module: ""      # Must match the RTL filename exactly (e.g. adder_tile)
 
 description: |
-  
-ports: |
-  
-usage_guide: |
-  
-tb_description: |
-  
-"""
+  # What does this tile do?
 
-_RUN_CONFIG_TEMPLATE = """\
-run_author: ""
-objective: ""
-tags: ""
+ports: |
+  # Describe how your tile uses the SemiCoLab port convention:
+  #   clk / arst_n     - clock and reset
+  #   csr_in[15:0]     - control inputs
+  #   data_reg_a / b   - input data (32-bit)
+  #   data_reg_c       - output data (32-bit)
+  #   csr_out[15:0]    - status outputs
+
+usage_guide: |
+  # How should this tile be used?
+
+tb_description: |
+  # Briefly describe your testbench approach
+
+# =============================================================================
+# RUN INFORMATION  (update before each run)
+# =============================================================================
+
+run_author: ""      # Who is running this verification
+objective: ""       # What are you trying to verify in this run
+tags: ""            # Comma-separated tags (e.g. initial, fix, refactor)
 
 main_change: |
-  
+  # What changed since the last run?
+
 notes: |
-  
+  # Any additional notes for this run
 """
 
 
@@ -44,7 +59,7 @@ def cmd_create_tile(db: Path) -> None:
 
     validate_database(db)
 
-    # 1. Read id_prefix
+    # 1. Read project config
     project_cfg_path = db / "project_config.yaml"
     raw = yaml.safe_load(project_cfg_path.read_text(encoding="utf-8")) or {}
     project_config = ProjectConfig.from_dict(raw)
@@ -68,22 +83,18 @@ def cmd_create_tile(db: Path) -> None:
         today=date.today(),
     )
 
-    print(f"[create-tile] Generating tile {tile_number_str} → {tile_id}")
+    print(f"[create-tile] Generating tile {tile_number_str} -> {tile_id}")
 
     # 5. Create config/tile_XXXX/
     config_tile_dir = db / "config" / f"tile_{tile_number_str}"
     config_tile_dir.mkdir(parents=True, exist_ok=True)
     print(f"[create-tile] Created {config_tile_dir.relative_to(db)}")
 
-    # 6. Write tile_config.yaml
+    # 6. Write single tile_config.yaml (tile + run fields merged)
     (config_tile_dir / "tile_config.yaml").write_text(_TILE_CONFIG_TEMPLATE, encoding="utf-8")
     print(f"[create-tile] Written tile_config.yaml")
 
-    # 7. Write run_config.yaml
-    (config_tile_dir / "run_config.yaml").write_text(_RUN_CONFIG_TEMPLATE, encoding="utf-8")
-    print(f"[create-tile] Written run_config.yaml")
-
-    # 8. Create src/rtl/ and src/tb/ with .gitkeep + tb templates
+    # 7. Create src/rtl/ and src/tb/ with templates
     import shutil
     template_dir = Path(__file__).parent.parent / "template"
     for sub in ("src/rtl", "src/tb"):
@@ -93,8 +104,6 @@ def cmd_create_tile(db: Path) -> None:
 
     tb_dir = config_tile_dir / "src" / "tb"
     if project_config.semicolab:
-        # Semicolab mode: copy tb_base.v as tb_tile.v (full wrapper visible to user)
-        # and tb_tasks.v as separate task library
         tb_base = template_dir / "tb_base.v"
         tb_tasks = template_dir / "tb_tasks.v"
         if tb_base.exists():
@@ -103,36 +112,34 @@ def cmd_create_tile(db: Path) -> None:
             shutil.copy2(tb_tasks, tb_dir / "tb_tasks.v")
         print(f"[create-tile] Created src/rtl/ and src/tb/ (semicolab: tb_tile.v + tb_tasks.v)")
     else:
-        # Universal mode: copy empty TB template
         tb_universal = template_dir / "tb_universal_template.v"
         if tb_universal.exists():
             shutil.copy2(tb_universal, tb_dir / "tb_tile.v")
         print(f"[create-tile] Created src/rtl/ and src/tb/ (universal: empty tb_tile.v)")
 
-    # 9. Create tiles/<tile_id>/
+    # 8. Create tiles/<tile_id>/
     tile_dir = db / "tiles" / tile_id
     tile_dir.mkdir(parents=True, exist_ok=True)
     print(f"[create-tile] Created tiles/{tile_id}/")
 
-    # 10. Generate README.md with empty fields
+    # 9. Generate README.md with empty fields
     empty_tile_config = TileConfig.from_dict({})
     generate_readme(tile_id, empty_tile_config, tile_dir / "README.md")
     print(f"[create-tile] Generated README.md")
 
-    # 11. Create works/rtl/ and works/tb/ with .gitkeep
+    # 10. Create works/ and runs/
     for sub in ("works/rtl", "works/tb"):
         d = tile_dir / sub
         d.mkdir(parents=True, exist_ok=True)
         (d / ".gitkeep").touch()
     print(f"[create-tile] Created works/")
 
-    # 12. Create runs/ with .gitkeep
     runs_dir = tile_dir / "runs"
     runs_dir.mkdir(exist_ok=True)
     (runs_dir / ".gitkeep").touch()
     print(f"[create-tile] Created runs/")
 
-    # 13. Append row to tile_index.csv
+    # 11. Append row to tile_index.csv
     append_tile_index(tile_index_path, {
         "tile_number": tile_number_str,
         "tile_id": tile_id,
@@ -145,9 +152,8 @@ def cmd_create_tile(db: Path) -> None:
     print(f"[create-tile] Appended row to tile_index.csv")
 
     print()
-    print("✓ Tile created successfully.")
+    print(f"Tile created successfully.")
     print(f"  Tile Number : {tile_number_str}")
     print(f"  Tile ID     : {tile_id}")
-    print(f"  Config      : {config_tile_dir.relative_to(db)}")
     print(f"  Next        : Fill in config/tile_{tile_number_str}/tile_config.yaml")
     print(f"                Add RTL to config/tile_{tile_number_str}/src/rtl/")

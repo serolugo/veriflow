@@ -218,16 +218,18 @@ endmodule
 
 > The testbench automatically includes 2 reset cycles at the start before calling your code.
 
-### 5.5 Configure the run
+### 5.5 Update run information
 
-Edit `database/config/tile_0001/run_config.yaml` before each run:
+Edit the run section at the bottom of `database/config/tile_0001/tile_config.yaml` before each run:
 
 ```yaml
 run_author: "Sebastian"
 objective: "Initial verification of the adder"
 tags: "initial, adder"
+
 main_change: |
   Initial implementation of the 32-bit adder.
+
 notes: |
   No additional notes.
 ```

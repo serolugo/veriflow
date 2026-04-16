@@ -19,7 +19,6 @@ from veriflow.generators.manifest import generate_manifest
 from veriflow.generators.notes import generate_notes
 from veriflow.generators.readme import generate_readme
 from veriflow.generators.summary import generate_summary
-from veriflow.models.run_config import RunConfig
 from veriflow.models.tile_config import TileConfig
 
 
@@ -73,14 +72,11 @@ def cmd_run(
         raise VeriFlowError(f"Config directory not found: {config_tile_dir}")
 
     tile_cfg_path = config_tile_dir / "tile_config.yaml"
-    run_cfg_path = config_tile_dir / "run_config.yaml"
     if not tile_cfg_path.exists():
         raise VeriFlowError(f"tile_config.yaml not found: {tile_cfg_path}")
-    if not run_cfg_path.exists():
-        raise VeriFlowError(f"run_config.yaml not found: {run_cfg_path}")
 
     tile_config = TileConfig.from_dict(yaml.safe_load(tile_cfg_path.read_text(encoding="utf-8")) or {})
-    run_config = RunConfig.from_dict(yaml.safe_load(run_cfg_path.read_text(encoding="utf-8")) or {})
+    run_config = tile_config  # run fields are now merged into tile_config
 
     # Read project config for semicolab flag
     from veriflow.models.project_config import ProjectConfig
@@ -283,7 +279,7 @@ def _finalize_run(
     run_id: str,
     today_str: str,
     tile_config: TileConfig,
-    run_config: RunConfig,
+    run_config: TileConfig,
     id_version: str,
     id_revision: str,
     rtl_files: list[Path],

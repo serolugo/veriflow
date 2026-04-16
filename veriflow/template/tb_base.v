@@ -37,7 +37,6 @@ initial begin
     arst_n = 1;
     repeat(1) @(posedge clk);
 
-    /* USER_TEST */
     // USER TEST STARTS HERE //
 
     // USER TEST ENDS HERE //
