@@ -23,21 +23,29 @@ Lightweight RTL verification and documentation framework for multi-project ASIC 
 - [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build/releases) (`iverilog`, `vvp`, `yosys`, `gtkwave`)
 - PyYAML: `pip install pyyaml`
 
+## Installation
+
+```bash
+pip install -e .
+```
+
+After installation, the `veriflow` command is available directly in the terminal.
+
 ---
 
 ## Quick Start
 
 ```bash
 # Initialize the database
-python veriflow/cli.py --db ./database init
+veriflow --db ./database init
 
 # Set semicolab: true or false in database/project_config.yaml
 
 # Create a tile
-python veriflow/cli.py --db ./database create-tile
+veriflow --db ./database create-tile
 
 # Fill in config/tile_0001/ with your RTL and test, then run
-python veriflow/cli.py --db ./database run --tile 0001 --waves
+veriflow --db ./database run --tile 0001 --waves
 ```
 
 ---
@@ -74,12 +82,12 @@ If no `tb_tile.v` is present, simulation is automatically skipped.
 ## Commands
 
 ```bash
-python veriflow/cli.py --db ./database init
-python veriflow/cli.py --db ./database create-tile
-python veriflow/cli.py --db ./database run --tile 0001 [--waves] [--skip-synth] [--skip-sim] [--only-check]
-python veriflow/cli.py --db ./database waves --tile 0001 [--run run-003]
-python veriflow/cli.py --db ./database bump-version --tile 0001
-python veriflow/cli.py --db ./database bump-revision --tile 0001
+veriflow --db ./database init
+veriflow --db ./database create-tile
+veriflow --db ./database run --tile 0001 [--waves] [--skip-synth] [--skip-sim] [--only-check]
+veriflow --db ./database waves --tile 0001 [--run run-003]
+veriflow --db ./database bump-version --tile 0001
+veriflow --db ./database bump-revision --tile 0001
 ```
 
 ---

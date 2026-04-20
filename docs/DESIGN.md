@@ -22,8 +22,8 @@ Communication between layers is unidirectional — commands use core and generat
 
 **Implementation:** `argparse` with subcommands. Catches `VeriFlowError` and prints it as `[ERROR]` with exit code 1.
 
-### Path fix
-At the top of the file, the package root is inserted into `sys.path` to allow direct execution with `python veriflow/cli.py`:
+### Entry point
+With `pip install -e .`, the `veriflow` command maps to `veriflow.cli:main`. Direct execution with `python veriflow/cli.py` is also supported via a path fix at the top of the file:
 ```python
 _pkg_root = Path(__file__).resolve().parent.parent
 if str(_pkg_root) not in sys.path:
@@ -231,9 +231,11 @@ class ProjectConfig:
 ```
 
 ### `TileConfig`
+Merged model — contains both tile fields (permanent) and run fields (updated each run):
 ```python
 @dataclass
 class TileConfig:
+    # Tile fields
     tile_name: str
     tile_author: str
     top_module: str
@@ -241,12 +243,7 @@ class TileConfig:
     ports: str
     usage_guide: str
     tb_description: str
-```
-
-### `RunConfig`
-```python
-@dataclass
-class RunConfig:
+    # Run fields
     run_author: str
     objective: str
     tags: str
@@ -315,8 +312,8 @@ Creates the full database structure. With `--force` overwrites if it already exi
 1. Reads `id_prefix` from `project_config.yaml`
 2. Calculates next `tile_number`
 3. Generates `tile_id` with version=01, revision=01
-4. Creates `config/tile_XXXX/` with YAML templates
-5. Creates `src/rtl/` and `src/tb/` (with `tb_tile_template.v`)
+4. Creates `config/tile_XXXX/` with `tile_config.yaml` (merged template with comments)
+5. Creates `src/rtl/` and `src/tb/` (with `tb_tile.v` + `tb_tasks.v`)
 6. Creates `tiles/<tile_id>/` with README, works/, runs/
 7. Appends to `tile_index.csv`
 
@@ -351,8 +348,8 @@ Base testbench. **Owned by VeriFlow — the user never edits it.** Contains two 
 ### `tb_tasks.v`
 Task library included inside the `tb` module via `` `include "tb_tasks.v" `` (after signal declarations). Provides: `write_data_reg_a`, `write_data_reg_b`, `write_csr_in`, `reset_csr_in`, `read_csr_out`.
 
-### `tb_tile_template.v`
-User-facing test template. Copied to `config/tile_XXXX/src/tb/tb_tile.v` on `create-tile`. The user writes tests between the `// USER TEST STARTS HERE //` and `// USER TEST ENDS HERE //` markers.
+### `tb_base.v` (user-facing copy)
+`tb_base.v` is copied to `config/tile_XXXX/src/tb/tb_tile.v` on `create-tile`. The user writes tests between the `// USER TEST STARTS HERE //` and `// USER TEST ENDS HERE //` markers. The rest of the file is managed by VeriFlow.
 
 ---
 

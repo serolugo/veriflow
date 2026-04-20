@@ -57,13 +57,11 @@ veriflow/
 │   └── summary.py
 ├── models/                  # Configuration dataclasses
 │   ├── project_config.py
-│   ├── tile_config.py
-│   └── run_config.py
+│   └── tile_config.py         # merged tile + run fields
 ├── template/                # Base Verilog files (owned by VeriFlow)
 │   ├── ip_tile.v
 │   ├── tb_base.v
-│   ├── tb_tasks.v
-│   └── tb_tile_template.v
+│   └── tb_tasks.v
 └── tests/
     ├── runner.py
     └── test_veriflow.py
@@ -80,7 +78,7 @@ database/
 ├── records.csv               # Full run history
 ├── config/
 │   └── tile_XXXX/            # User-editable tile configuration
-│       └── tile_config.yaml     # tile + run fields merged
+│       └── tile_config.yaml     # tile + run fields
 │       └── src/
 │           ├── rtl/          # User RTL sources
 │           └── tb/           # User test code
@@ -109,6 +107,9 @@ database/
 ## 5. CLI Interface
 
 ```bash
+veriflow --db <path> <command> [options]
+
+# Also available as:
 python veriflow/cli.py --db <path> <command> [options]
 ```
 
@@ -180,6 +181,7 @@ description: |
 ```
 
 ### `tile_config.yaml`
+Contains both tile information (permanent) and run information (updated each run):
 ```yaml
 tile_name: ""
 tile_author: ""
@@ -188,10 +190,7 @@ description: |
 ports: |
 usage_guide: |
 tb_description: |
-```
 
-### `run_config.yaml`
-```yaml
 run_author: ""
 objective: ""
 tags: ""
@@ -312,7 +311,7 @@ Standalone suite at `tests/runner.py`. Does not require pytest.
 python -m veriflow.tests.runner
 ```
 
-22 integration tests covering:
+26 integration tests covering:
 - Tile ID generation and parsing
 - Run ID generation
 - init, create-tile, run, bump-version, bump-revision commands

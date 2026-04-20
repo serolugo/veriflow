@@ -27,26 +27,18 @@ yosys --version
 
 ## 3. Installation
 
-Extract the zip into your project. The structure should look like:
+Extract the zip into your project, then install:
 
-```
-your_project/
-└── veriflow/
-    ├── cli.py
-    ├── commands/
-    ├── core/
-    ├── generators/
-    ├── models/
-    ├── template/
-    └── tests/
+```bash
+pip install -e .
 ```
 
-Verify everything works:
+This registers the `veriflow` command globally. Verify everything works:
 ```bash
 python -m veriflow.tests.runner
 ```
 
-Expected result: `22 passed, 0 failed`.
+Expected result: `26 passed, 0 failed`.
 
 ---
 
@@ -55,7 +47,7 @@ Expected result: `22 passed, 0 failed`.
 ### 4.1 Create the database
 
 ```bash
-python veriflow/cli.py --db ./database init
+veriflow --db ./database init
 ```
 
 This creates:
@@ -70,7 +62,7 @@ database/
 
 If the folder already exists, use `--force` to overwrite:
 ```bash
-python veriflow/cli.py --db ./database init --force
+veriflow --db ./database init --force
 ```
 
 ### 4.2 Configure the project
@@ -94,19 +86,18 @@ The `id_prefix` field is required — tiles cannot be created without it.
 ### 5.1 Create a tile
 
 ```bash
-python veriflow/cli.py --db ./database create-tile
+veriflow --db ./database create-tile
 ```
 
 Automatically generates:
-- `database/config/tile_0001/tile_config.yaml` — tile configuration
-- `database/config/tile_0001/run_config.yaml` — run configuration
+- `database/config/tile_0001/tile_config.yaml` — tile + run configuration (single file)
 - `database/config/tile_0001/src/rtl/` — folder for RTL
 - `database/config/tile_0001/src/tb/tb_tile.v` — test template
 - `database/tiles/<tile_id>/` — artifacts directory
 
 ### 5.2 Configure the tile
 
-**`tile_config.yaml`** — fill before the first run:
+**`tile_config.yaml`** — contains both tile info (fill once) and run info (update before each run):
 ```yaml
 tile_name: "Adder Tile"
 tile_author: "Sebastian"
@@ -118,8 +109,14 @@ ports: |
   data_reg_c: result
 usage_guide: |
   Connect operands, read result from data_reg_c.
-tb_description: |
-  Tests basic sums and overflow.
+
+run_author: "Sebastian"
+objective: "Initial verification"
+tags: "initial"
+main_change: |
+  Initial implementation.
+notes: |
+  No notes.
 ```
 
 > The `top_module` field must match exactly the name of the `.v` file in `src/rtl/`.
@@ -220,7 +217,7 @@ endmodule
 
 ### 5.5 Update run information
 
-Edit the run section at the bottom of `database/config/tile_0001/tile_config.yaml` before each run:
+Before each run, update the run section at the bottom of `tile_config.yaml`:
 
 ```yaml
 run_author: "Sebastian"
@@ -228,10 +225,10 @@ objective: "Initial verification of the adder"
 tags: "initial, adder"
 
 main_change: |
-  Initial implementation of the 32-bit adder.
+  What changed since the last run.
 
 notes: |
-  No additional notes.
+  Any additional notes.
 ```
 
 ---
@@ -241,7 +238,7 @@ notes: |
 ### 6.1 Full run
 
 ```bash
-python veriflow/cli.py --db ./database run --tile 0001
+veriflow --db ./database run --tile 0001
 ```
 
 The pipeline executes in order:
@@ -255,22 +252,22 @@ The pipeline executes in order:
 
 ```bash
 # Show waveforms automatically when done
-python veriflow/cli.py --db ./database run --tile 0001 --waves
+veriflow --db ./database run --tile 0001 --waves
 
 # Connectivity check only
-python veriflow/cli.py --db ./database run --tile 0001 --only-check
+veriflow --db ./database run --tile 0001 --only-check
 
 # Simulation only
-python veriflow/cli.py --db ./database run --tile 0001 --only-sim
+veriflow --db ./database run --tile 0001 --only-sim
 
 # Synthesis only
-python veriflow/cli.py --db ./database run --tile 0001 --only-synth
+veriflow --db ./database run --tile 0001 --only-synth
 
 # Skip synthesis
-python veriflow/cli.py --db ./database run --tile 0001 --skip-synth
+veriflow --db ./database run --tile 0001 --skip-synth
 
 # Skip simulation
-python veriflow/cli.py --db ./database run --tile 0001 --skip-sim
+veriflow --db ./database run --tile 0001 --skip-sim
 ```
 
 ### 6.3 Interpreting the result
@@ -303,13 +300,13 @@ python veriflow/cli.py --db ./database run --tile 0001 --skip-sim
 ### View waveforms of the latest run
 
 ```bash
-python veriflow/cli.py --db ./database waves --tile 0001
+veriflow --db ./database waves --tile 0001
 ```
 
 ### View waveforms of a specific run
 
 ```bash
-python veriflow/cli.py --db ./database waves --tile 0001 --run run-003
+veriflow --db ./database waves --tile 0001 --run run-003
 ```
 
 ### In GTKWave
@@ -328,7 +325,7 @@ python veriflow/cli.py --db ./database waves --tile 0001 --run run-003
 When you make a significant RTL change and want to mark a new development iteration:
 
 ```bash
-python veriflow/cli.py --db ./database bump-version --tile 0001
+veriflow --db ./database bump-version --tile 0001
 ```
 
 - Version: `01` → `02`
@@ -341,7 +338,7 @@ python veriflow/cli.py --db ./database bump-version --tile 0001
 When the advisor approves the design:
 
 ```bash
-python veriflow/cli.py --db ./database bump-revision --tile 0001
+veriflow --db ./database bump-revision --tile 0001
 ```
 
 - Revision: `01` → `02`
@@ -408,7 +405,7 @@ Tests use `tempfile.mkdtemp()` for isolated environments and clean up after them
 ### `ModuleNotFoundError: No module named 'veriflow'`
 `cli.py` includes an automatic path fix. If it persists, use:
 ```bash
-python -m veriflow.cli --db ./database <command>
+python -m veriflow.cli --db ./database <command>  # or: veriflow --db ./database <command>
 ```
 
 ### `Tool not found in PATH: iverilog`
