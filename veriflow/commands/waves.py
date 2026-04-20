@@ -48,7 +48,20 @@ def cmd_waves(db: Path, tile_number: str, run_id: str | None = None) -> None:
     print(f"[waves] VCD     : {wave_path}")
 
     import subprocess
-    subprocess.Popen(["gtkwave", str(wave_path)])
+    import os
 
-    print()
-    print("✓ GTKWave launched.")
+    if os.environ.get("SEMICOLAB_DOCKER"):
+        # Running inside Docker container — launch GTKWave on virtual display
+        # and open the browser on the host via noVNC
+        subprocess.Popen(["gtkwave", str(wave_path)], env={**os.environ, "DISPLAY": ":1"})
+        print()
+        print("✓ GTKWave launched.")
+        print("  Open your browser at: http://localhost:6080")
+        # Try to open browser on host (works if running with -e BROWSER_OPEN=1)
+        if os.environ.get("BROWSER_OPEN"):
+            subprocess.Popen(["xdg-open", "http://localhost:6080"])
+    else:
+        from veriflow.core.sim_runner import launch_gtkwave
+        launch_gtkwave(wave_path)
+        print()
+        print("✓ GTKWave launched.")
