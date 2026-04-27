@@ -12,6 +12,10 @@ setup(
     },
     install_requires=[
         "pyyaml",
+        "rich>=13.0",
+        "pyfiglet>=1.0",
+        "terminaltexteffects>=1.0",
+        "questionary>=2.0",
     ],
     entry_points={
         "console_scripts": [

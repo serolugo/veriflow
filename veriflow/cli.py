@@ -70,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # No arguments → interactive TUI
+    if not (argv if argv is not None else sys.argv[1:]):
+        from veriflow.ui.banner import show_banner
+        from veriflow.ui.tui import run_tui
+        show_banner(subtitle="VeriFlow", tool="veriflow")
+        run_tui()
+        return 0
+
     parser = build_parser()
     args = parser.parse_args(argv)
     db = Path(args.db)
