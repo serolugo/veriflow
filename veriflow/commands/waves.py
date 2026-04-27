@@ -3,10 +3,11 @@ from pathlib import Path
 from veriflow.core import VeriFlowError
 from veriflow.core.csv_store import get_tile_row
 from veriflow.core.validator import validate_database
+from veriflow.ui.output import console, print_wave_url, print_done
 
 
 def cmd_waves(db: Path, tile_number: str, run_id: str | None = None) -> None:
-    """Open GTKWave for a specific run of a tile."""
+    """Open waveform viewer for a specific run of a tile."""
 
     validate_database(db)
     tile_number_str = f"{int(tile_number):04d}"
@@ -23,7 +24,6 @@ def cmd_waves(db: Path, tile_number: str, run_id: str | None = None) -> None:
         if not target_run.exists():
             raise VeriFlowError(f"Run not found: {target_run}")
     else:
-        # Find latest run-NNN
         import re
         pattern = re.compile(r"^run-(\d{3})$")
         runs = sorted(
@@ -43,18 +43,16 @@ def cmd_waves(db: Path, tile_number: str, run_id: str | None = None) -> None:
             f"  Make sure the run included simulation (not --skip-sim)."
         )
 
-    print(f"[waves] Opening waveforms for tile {tile_id}")
-    print(f"[waves] Run     : {target_run.name}")
-    print(f"[waves] VCD     : {wave_path}")
+    console.print()
+    console.print(f"  [secondary]tile[/secondary]  [id]{tile_id}[/id]")
+    console.print(f"  [secondary]run [/secondary]  [id]{target_run.name}[/id]")
 
     import os
 
     if os.environ.get("SEMICOLAB_DOCKER"):
-        # Running inside TileBench — open Surfer WASM with VCD preloaded
         from veriflow.core.sim_runner import open_surfer
         open_surfer(wave_path)
     else:
         from veriflow.core.sim_runner import launch_gtkwave
         launch_gtkwave(wave_path)
-        print()
-        print("✓ GTKWave launched.")
+        print_done("GTKWave launched.")
