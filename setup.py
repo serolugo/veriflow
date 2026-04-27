@@ -14,7 +14,7 @@ setup(
         "pyyaml",
         "rich>=13.0",
         "pyfiglet>=1.0",
-        "questionary>=2.0",
+        "textual>=0.60",
     ],
     entry_points={
         "console_scripts": [
