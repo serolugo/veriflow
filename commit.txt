@@ -1,0 +1,19 @@
+feat(ui): connect Rich output to bump_version and bump_revision
+
+bump_version.py
+  - Remove all [bump-version] print() statements
+  - print_section() header at start
+  - Old and new tile_id shown in styled context block
+    with (preserved) label on the old ID
+  - print_done() showing version transition v01 → v02
+    and confirmation that revision is unchanged
+
+bump_revision.py
+  - Remove all [bump-revision] print() statements
+  - print_section() header at start
+  - Old and new tile_id shown in styled context block
+    with (preserved) label on the old ID
+  - print_done() showing revision transition r01 → r02
+    and version reset to v01
+
+Logic, error handling, and function signatures unchanged in both files.
