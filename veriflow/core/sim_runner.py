@@ -235,22 +235,28 @@ def run_simulation(
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def _launch_gtkwave_docker(wave_path: Path) -> None:
-    """In Docker mode: launch GTKWave on Xvfb and open noVNC in browser."""
-    import subprocess, shutil, time, webbrowser
-    gtkwave_path = shutil.which("gtkwave")
-    if not gtkwave_path:
-        print("[waves] GTKWave not found in PATH")
-        return
-    # Launch GTKWave on virtual display
-    subprocess.Popen(
-        [gtkwave_path, str(wave_path)],
-        env={**__import__("os").environ, "DISPLAY": ":1"},
-    )
-    time.sleep(1)
-    print("[waves] GTKWave running — open http://localhost:6080 in your browser")
+def open_surfer(wave_path: Path) -> None:
+    """In TileBench (Docker) mode: open Surfer WASM with the VCD preloaded."""
+    import webbrowser
+    from urllib.parse import quote
+
     try:
-        webbrowser.open("http://localhost:6080")
+        rel = wave_path.resolve().relative_to(Path("/workspace"))
+        vcd_url = f"http://localhost:7681/files/{rel.as_posix()}"
+        surfer_url = f"http://localhost:7681/?load_url={quote(vcd_url, safe='')}"
+    except ValueError:
+        # VCD not under /workspace — open Surfer without preloading
+        surfer_url = "http://localhost:7681"
+        vcd_url = None
+
+    print()
+    print("✓ Waveform ready.")
+    print(f"  Open in browser → {surfer_url}")
+    if vcd_url is None:
+        print("  (Could not resolve VCD path — load the file manually in Surfer)")
+
+    try:
+        webbrowser.open(surfer_url)
     except Exception:
         pass
 
@@ -259,7 +265,7 @@ def launch_gtkwave(wave_path: Path) -> None:
     """Launch GTKWave with the given VCD file (non-blocking)."""
     import os
     if os.environ.get("SEMICOLAB_DOCKER"):
-        _launch_gtkwave_docker(wave_path)
+        open_surfer(wave_path)
         return
     import platform, shutil, os
     gtkwave_path = shutil.which("gtkwave")
