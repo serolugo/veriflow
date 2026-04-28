@@ -1,11 +1,8 @@
 """
-veriflow.ui.tui
----------------
-Textual TUI for VeriFlow: database → tile → runs navigator.
+veriflow.ui.tui  (v2 — 3-column ranger/Argonaut navigator)
 """
 from __future__ import annotations
 
-import csv
 import os
 import subprocess
 from pathlib import Path
@@ -15,15 +12,9 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.screen import Screen
-from textual.widgets import (
-    Button,
-    Footer,
-    Input,
-    Label,
-    ListItem,
-    ListView,
-    Tree,
-)
+from textual.widgets import Button, Footer, Input, Label, ListItem, ListView
+
+from .themes import build_css, get_palette
 
 
 # ─── Data helpers ─────────────────────────────────────────────────────────────
@@ -31,14 +22,14 @@ from textual.widgets import (
 def _find_databases(root: Path) -> list[Path]:
     if not root.is_dir():
         return []
-    hits: list[Path] = []
-    for p in sorted(root.iterdir()):
-        if p.is_dir() and (p / "project_config.yaml").exists():
-            hits.append(p)
-    return hits
+    return sorted(
+        p for p in root.iterdir()
+        if p.is_dir() and (p / "project_config.yaml").exists()
+    )
 
 
 def _list_tiles(db: Path) -> list[dict]:
+    import csv
     index = db / "tile_index.csv"
     if not index.exists():
         return []
@@ -51,7 +42,7 @@ def _list_runs(db: Path, tile_id: str) -> list[Path]:
     if not runs_dir.exists():
         return []
     return sorted(
-        [d for d in runs_dir.iterdir() if d.is_dir() and d.name.startswith("run-")],
+        (d for d in runs_dir.iterdir() if d.is_dir() and d.name.startswith("run-")),
         key=lambda d: d.name,
         reverse=True,
     )
@@ -92,238 +83,171 @@ def _tile_config_path(db: Path, tile_number: str) -> Path:
     return db / "config" / f"tile_{padded}" / "tile_config.yaml"
 
 
-# ─── CSS (inline — no external file needed) ───────────────────────────────────
+# ─── CSS ──────────────────────────────────────────────────────────────────────
 
-APP_CSS = """
-Screen {
-    background: #1a1b26;
-    color: #c0caf5;
-}
-
-#breadcrumb {
+def _make_css() -> str:
+    p = get_palette()
+    base = build_css(p)
+    layout = f"""
+#breadcrumb {{
     height: 1;
-    background: #1f2335;
-    color: #7aa2f7;
+    background: {p.bg_muted};
+    color: {p.blue};
     padding: 0 2;
     text-style: bold;
-}
+}}
 
-#main-area {
+#columns {{
     height: 1fr;
     padding: 0 1;
-}
+}}
 
-/* ── Nav panel ── */
-#nav-panel {
-    width: 32;
-    border: round #414868;
-    border-title-color: #565f89;
-    border-title-align: left;
-    padding: 0;
-}
-
-#nav-panel:focus-within {
-    border: round #bb9af7;
-    border-title-color: #7aa2f7;
-}
-
-Tree {
-    background: #1a1b26;
-    scrollbar-background: #1a1b26;
-    scrollbar-color: #414868;
-    color: #c0caf5;
+/* Three columns */
+.col {{
+    border: round {p.border};
+    margin: 0 1;
     height: 1fr;
-}
+}}
 
-Tree > .tree--cursor {
-    background: #ff9e64;
-    color: #1a1b26;
+.col.active {{
+    border: round {p.accent};
+}}
+
+#col-db   {{ width: 26; }}
+#col-tile {{ width: 1fr; }}
+#col-run  {{ width: 2fr; }}
+
+/* ListViews fill their column */
+ListView {{
+    height: 1fr;
+    width: 1fr;
+    background: {p.bg};
+    scrollbar-background: {p.bg};
+    scrollbar-color: {p.border};
+}}
+
+ListView > ListItem {{
+    padding: 0 1;
+    color: {p.text};
+    background: {p.bg};
+}}
+
+ListView > ListItem.--highlight {{
+    background: {p.selected_bg};
+    color: {p.text};
     text-style: bold;
-}
+}}
 
-Tree > .tree--highlight {
-    background: #ff9e64 15%;
-}
+/* Status colours inside run list items */
+.run-pass {{ color: {p.green}; }}
+.run-fail {{ color: {p.red};   }}
+.run-warn {{ color: {p.yellow}; }}
 
-Tree > .tree--guides {
-    color: #414868;
-}
+/* Empty-state containers */
+.col-empty {{
+    width: 1fr;
+    height: 1fr;
+    align: center middle;
+    color: {p.text_dim};
+}}
 
-/* Empty state hint inside nav panel */
-#nav-empty {
-    height: auto;
-    padding: 1 2;
-    color: #565f89;
+#db-empty {{
     display: none;
-}
+    width: 1fr;
+    height: 1fr;
+    align: center middle;
+    padding: 1 2;
+}}
 
-#nav-empty.visible {
-    display: block;
-}
-
-#btn-init {
+#btn-init {{
     margin-top: 1;
-    background: #ff9e64;
-    color: #1a1b26;
+    background: {p.orange};
+    color: {p.bg};
     border: none;
     width: 100%;
-}
+}}
 
-#btn-init:focus {
-    background: #e0af68;
-}
+#btn-init:focus {{
+    background: {p.yellow};
+    color: {p.bg};
+}}
 
-/* ── Detail panel ── */
-#detail-panel {
-    border: round #414868;
-    border-title-color: #565f89;
-    border-title-align: left;
-    padding: 1 2;
-}
+/* Form screens */
+#form-scroll {{ padding: 2 4; }}
+#form-title  {{ color: {p.orange}; text-style: bold; margin-bottom: 1; }}
 
-#detail-panel:focus-within {
-    border: round #bb9af7;
-    border-title-color: #7aa2f7;
-}
+.field-label {{ color: {p.text_dim}; height: 1; }}
 
-#detail-empty {
-    color: #565f89;
-}
-
-#tile-info {
-    display: none;
-}
-
-#tile-info.visible {
-    display: block;
-}
-
-#detail-title {
-    color: #7aa2f7;
-    text-style: bold;
-}
-
-#detail-subtitle {
-    color: #565f89;
-}
-
-#detail-version {
-    color: #565f89;
+Input {{
     margin-bottom: 1;
-}
+    background: {p.bg_muted};
+    border: tall {p.border};
+    color: {p.text};
+}}
 
-#runs-header {
-    color: #c0caf5;
-    text-style: bold;
-    margin-top: 1;
-}
+Input:focus {{ border: tall {p.orange}; }}
 
-#runs-empty {
-    color: #565f89;
-    display: none;
-}
+#btn-row {{ margin-top: 1; height: 3; layout: horizontal; }}
+Button   {{ margin-right: 2; }}
 
-#runs-empty.visible {
-    display: block;
-}
+#btn-save   {{ background: {p.orange}; color: {p.bg}; border: none; }}
+#btn-cancel {{ background: {p.bg_muted}; color: {p.text}; border: none; }}
+#btn-yes    {{ background: {p.red};    color: {p.bg}; border: none; }}
+#btn-no     {{ background: {p.bg_muted}; color: {p.text}; border: none; }}
 
-#runs-list {
-    height: auto;
-    max-height: 12;
-    background: #1f2335;
-    border: round #414868;
-    margin-top: 1;
-    display: none;
-}
+/* Help screen */
+#help-title {{ color: {p.orange}; text-style: bold; margin-bottom: 1; }}
 
-#runs-list.visible {
-    display: block;
-}
+Footer {{
+    background: {p.bg_muted};
+    color: {p.text_dim};
+}}
 
-ListView > ListItem {
-    padding: 0 1;
-    color: #c0caf5;
-}
-
-ListView > ListItem.--highlight {
-    background: #ff9e64 25%;
-    color: #cdd6f4;
-    text-style: bold;
-}
-
-#workspace-label {
-    color: #565f89;
-    margin-top: 1;
-}
-
-/* ── Footer ── */
-Footer {
-    background: #1f2335;
-    color: #565f89;
-}
-"""
-
-FORM_CSS = """
-Screen {
-    background: #1a1b26;
-    color: #c0caf5;
-    padding: 0;
-}
-
-#form-scroll {
+/* Confirm modal */
+#confirm-box {{
+    background: {p.bg_muted};
+    border: round {p.accent};
     padding: 2 4;
-}
+    width: 50;
+    height: auto;
+    align: center middle;
+}}
 
-#form-title {
-    color: #ff9e64;
-    text-style: bold;
-    margin-bottom: 1;
-}
-
-.field-label {
-    color: #565f89;
-    height: 1;
-}
-
-Input {
-    margin-bottom: 1;
-    background: #1f2335;
-    border: tall #414868;
-    color: #c0caf5;
-}
-
-Input:focus {
-    border: tall #ff9e64;
-}
-
-#btn-row {
-    margin-top: 1;
-    height: 3;
-    layout: horizontal;
-}
-
-Button {
-    margin-right: 2;
-}
-
-#btn-save {
-    background: #ff9e64;
-    color: #1a1b26;
-    border: none;
-}
-
-#btn-cancel {
-    background: #414868;
-    color: #c0caf5;
-    border: none;
-}
+#confirm-msg {{ color: {p.text}; margin-bottom: 1; }}
 """
+    return base + layout
 
 
-# ─── Ask Input Screen ─────────────────────────────────────────────────────────
+_APP_CSS = _make_css()
+
+
+# ─── Form screens (unchanged from v1) ─────────────────────────────────────────
+
+TILE_CONFIG_FIELDS: list[tuple[str, str]] = [
+    ("tile_name",      "Tile Name"),
+    ("tile_author",    "Author"),
+    ("top_module",     "Top Module"),
+    ("description",    "Description"),
+    ("ports",          "Ports"),
+    ("usage_guide",    "Usage Guide"),
+    ("tb_description", "TB Description"),
+    ("run_author",     "Run Author"),
+    ("objective",      "Objective"),
+    ("tags",           "Tags"),
+    ("main_change",    "Main Change"),
+    ("notes",          "Notes"),
+]
+
+PROJECT_CONFIG_FIELDS: list[tuple[str, str]] = [
+    ("id_prefix",    "ID Prefix"),
+    ("project_name", "Project Name"),
+    ("repo",         "Repository"),
+    ("description",  "Description"),
+]
+
 
 class AskInputScreen(Screen):
-    CSS = FORM_CSS
+    CSS = "Screen { background: #1a1b26; color: #c0caf5; }"
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
     def __init__(self, title: str, prompt: str, placeholder: str = "") -> None:
@@ -361,26 +285,8 @@ class AskInputScreen(Screen):
         self.dismiss(value if value else None)
 
 
-# ─── Edit Tile Config Screen ──────────────────────────────────────────────────
-
-TILE_CONFIG_FIELDS: list[tuple[str, str]] = [
-    ("tile_name",      "Tile Name"),
-    ("tile_author",    "Author"),
-    ("top_module",     "Top Module"),
-    ("description",    "Description"),
-    ("ports",          "Ports"),
-    ("usage_guide",    "Usage Guide"),
-    ("tb_description", "TB Description"),
-    ("run_author",     "Run Author"),
-    ("objective",      "Objective"),
-    ("tags",           "Tags"),
-    ("main_change",    "Main Change"),
-    ("notes",          "Notes"),
-]
-
-
 class EditTileScreen(Screen):
-    CSS = FORM_CSS
+    CSS = "Screen { background: #1a1b26; color: #c0caf5; }"
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
     def __init__(self, config_path: Path, initial: dict) -> None:
@@ -415,18 +321,8 @@ class EditTileScreen(Screen):
         self.dismiss(True)
 
 
-# ─── Edit Project Config Screen ───────────────────────────────────────────────
-
-PROJECT_CONFIG_FIELDS: list[tuple[str, str]] = [
-    ("id_prefix",    "ID Prefix"),
-    ("project_name", "Project Name"),
-    ("repo",         "Repository"),
-    ("description",  "Description"),
-]
-
-
 class EditProjectScreen(Screen):
-    CSS = FORM_CSS
+    CSS = "Screen { background: #1a1b26; color: #c0caf5; }"
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
     def __init__(self, config_path: Path, initial: dict) -> None:
@@ -461,37 +357,62 @@ class EditProjectScreen(Screen):
         self.dismiss(True)
 
 
-# ─── Help Screen ──────────────────────────────────────────────────────────────
+class ConfirmScreen(Screen):
+    CSS = """
+    Screen { background: #00000088; align: center middle; }
+    """
+    BINDINGS = [
+        Binding("y",      "yes",  "Yes"),
+        Binding("n",      "no",   "No"),
+        Binding("escape", "no",   "No"),
+    ]
+
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm-box"):
+            yield Label(self._message, id="confirm-msg")
+            with Horizontal(id="btn-row"):
+                yield Button("Sí [Y]", id="btn-yes")
+                yield Button("No [N]", id="btn-no")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "btn-yes")
+
+    def action_yes(self) -> None:
+        self.dismiss(True)
+
+    def action_no(self) -> None:
+        self.dismiss(False)
+
 
 class HelpScreen(Screen):
-    CSS = """
-    Screen { background: #1a1b26; color: #c0caf5; padding: 2 4; }
-    #help-title { color: #ff9e64; text-style: bold; margin-bottom: 1; }
-    Label { color: #c0caf5; }
-    """
+    CSS = "Screen { background: #1a1b26; color: #c0caf5; padding: 2 4; }"
     BINDINGS = [Binding("escape,q,question_mark", "dismiss_help", "Close")]
 
     def compose(self) -> ComposeResult:
         yield Label("Keyboard Shortcuts", id="help-title")
         yield Label("")
         rows = [
-            ("[I]",     "Init database (empty state)"),
-            ("[E]",     "Edit tile config"),
-            ("[P]",     "Edit project config"),
-            ("[N]",     "New tile in selected database"),
-            ("[R]",     "Run verification on selected tile"),
-            ("[W]",     "Open waves for selected run"),
-            ("[B]",     "Show host workspace path"),
-            ("[↑↓]",   "Navigate tree / run list"),
-            ("[Enter]", "Expand / select node"),
-            ("[Esc]",   "Go back / up one level"),
-            ("[Q]",     "Quit"),
-            ("[?]",     "This help"),
+            ("→ / Enter",  "Avanzar al siguiente panel / seleccionar"),
+            ("← / Esc",    "Retroceder al panel anterior"),
+            ("[I]",        "Init database"),
+            ("[N]",        "Nuevo tile en la database activa"),
+            ("[E]",        "Editar tile config"),
+            ("[P]",        "Editar project config"),
+            ("[R]",        "Ejecutar run en el tile activo"),
+            ("[W]",        "Abrir waves del run activo"),
+            ("[B]",        "Mostrar path del workspace"),
+            ("[↑↓]",       "Navegar dentro del panel activo"),
+            ("[Q]",        "Salir"),
+            ("[?]",        "Esta ayuda"),
         ]
         for key, desc in rows:
-            yield Label(f"  {key:<12} {desc}")
+            yield Label(f"  {key:<16} {desc}")
         yield Label("")
-        yield Label("  Press Esc or Q to close", style="color: #565f89")
+        yield Label("  Press Esc to close", style="color: #565f89")
 
     def action_dismiss_help(self) -> None:
         self.dismiss()
@@ -499,8 +420,13 @@ class HelpScreen(Screen):
 
 # ─── Main App ─────────────────────────────────────────────────────────────────
 
+_COL_IDS = ("col-db", "col-tile", "col-run")
+_LV_IDS  = ("lv-db",  "lv-tile",  "lv-run")
+_TITLES  = ("📁  Databases", "🧩  Tiles", "🏃  Runs")
+
+
 class VeriFlowApp(App):
-    CSS = APP_CSS
+    CSS   = _APP_CSS
     TITLE = "SEMICOLAB · VeriFlow"
 
     BINDINGS = [
@@ -513,52 +439,59 @@ class VeriFlowApp(App):
         Binding("b",             "show_path",    "Path",    show=True),
         Binding("question_mark", "show_help",    "Ayuda",   show=True),
         Binding("q",             "quit_app",     "Salir",   show=True),
-        Binding("escape",        "go_back",      "Back",    show=False),
+        Binding("right",         "go_right",     "",        show=False),
+        Binding("left",          "go_left",      "",        show=False),
+        Binding("escape",        "go_left",      "",        show=False),
     ]
 
     def __init__(self, workspace: Path) -> None:
         super().__init__()
-        self._workspace       = workspace
-        self._current_db:      Path | None = None
-        self._current_tile:    dict | None = None
-        self._current_runs:    list[Path]  = []
-        self._current_run_dir: Path | None = None
+        self._workspace = workspace
+        self._col       = 0               # active column index
+        self._db:    Path | None = None
+        self._tile:  dict | None = None
+        self._run:   Path | None = None
+        # cached lists so highlight handlers don't re-read disk on every move
+        self._dbs:   list[Path] = []
+        self._tiles: list[dict] = []
+        self._runs:  list[Path] = []
+        self._loading = False             # guard against recursive callbacks
 
     # ── Layout ───────────────────────────────────────────────────────────────
 
     def compose(self) -> ComposeResult:
-        yield Label("workspace > veriflow", id="breadcrumb")
-        with Horizontal(id="main-area"):
-            with Vertical(id="nav-panel"):
-                yield Tree("root", id="nav-tree")
-                with Vertical(id="nav-empty"):
-                    yield Label("No hay databases todavía.", id="nav-empty-msg")
+        yield Label("", id="breadcrumb")
+        with Horizontal(id="columns"):
+            with Vertical(id="col-db", classes="col active"):
+                yield ListView(id="lv-db")
+                with Vertical(id="db-empty"):
+                    yield Label("No hay databases todavía.")
                     yield Button("[ I · Init Database ]", id="btn-init")
-            with ScrollableContainer(id="detail-panel"):
+            with Vertical(id="col-tile", classes="col"):
+                yield ListView(id="lv-tile")
                 yield Label(
-                    "Selecciona un tile del árbol para ver detalles.",
-                    id="detail-empty",
+                    "← Selecciona una database",
+                    id="tile-empty",
+                    classes="col-empty",
                 )
-                with Vertical(id="tile-info"):
-                    yield Label("", id="detail-title")
-                    yield Label("", id="detail-subtitle")
-                    yield Label("", id="detail-version")
-                    yield Label("Runs", id="runs-header")
-                    yield Label("  No hay runs — presiona [R].", id="runs-empty")
-                    yield ListView(id="runs-list")
-                yield Label("", id="workspace-label")
+            with Vertical(id="col-run", classes="col"):
+                yield ListView(id="lv-run")
+                yield Label(
+                    "← Selecciona un tile",
+                    id="run-empty",
+                    classes="col-empty",
+                )
         yield Footer()
 
     def on_mount(self) -> None:
-        tree = self.query_one("#nav-tree", Tree)
-        tree.show_root = False
-        self.query_one("#nav-panel").border_title    = "📁  Databases"
-        self.query_one("#detail-panel").border_title = "  VeriFlow"
-        self._populate_tree()
+        for i, cid in enumerate(_COL_IDS):
+            self.query_one(f"#{cid}").border_title = _TITLES[i]
+        self._populate_dbs()
         self._update_breadcrumb()
-        self._check_terminal_size()
+        self.query_one("#lv-db", ListView).focus()
+        self._check_size()
 
-    def _check_terminal_size(self) -> None:
+    def _check_size(self) -> None:
         w, h = self.size.width, self.size.height
         if w < 80 or h < 24:
             self.notify(
@@ -567,139 +500,191 @@ class VeriFlowApp(App):
                 timeout=5,
             )
 
-    # ── Tree population ───────────────────────────────────────────────────────
+    # ── Population ───────────────────────────────────────────────────────────
 
-    def _populate_tree(self) -> None:
-        tree      = self.query_one("#nav-tree", Tree)
-        nav_empty = self.query_one("#nav-empty")
-        tree.clear()
+    def _populate_dbs(self) -> None:
+        self._loading = True
+        try:
+            self._dbs = _find_databases(self._workspace)
+            lv        = self.query_one("#lv-db",   ListView)
+            db_empty  = self.query_one("#db-empty")
+            lv.clear()
 
-        dbs = _find_databases(self._workspace)
-        if not dbs:
-            tree.display      = False
-            nav_empty.add_class("visible")
+            if not self._dbs:
+                lv.display       = False
+                db_empty.display = True
+                self._tiles = []
+                self._runs  = []
+                self._clear_lv("lv-tile", "tile-empty", "← Selecciona una database")
+                self._clear_lv("lv-run",  "run-empty",  "← Selecciona un tile")
+                return
+
+            lv.display       = True
+            db_empty.display = False
+            for db in self._dbs:
+                lv.append(ListItem(Label(f"  {db.name}")))
+
+            self._db = self._dbs[0]
+            self._populate_tiles(self._dbs[0])
+        finally:
+            self._loading = False
+
+    def _populate_tiles(self, db: Path) -> None:
+        self._tiles = _list_tiles(db)
+        lv          = self.query_one("#lv-tile", ListView)
+        empty       = self.query_one("#tile-empty", Label)
+        lv.clear()
+
+        if not self._tiles:
+            lv.display    = False
+            empty.display = True
+            empty.update("No hay tiles — presiona [N].")
+            self._runs = []
+            self._clear_lv("lv-run", "run-empty", "← Selecciona un tile")
             return
 
-        tree.display = True
-        nav_empty.remove_class("visible")
+        lv.display    = True
+        empty.display = False
+        for tile in self._tiles:
+            name = tile.get("tile_name") or f"tile_{tile.get('tile_number', '?')}"
+            ver  = str(tile.get("version",  "")).zfill(2)
+            rev  = str(tile.get("revision", "")).zfill(2)
+            lv.append(ListItem(Label(f"  {name}  v{ver}r{rev}")))
 
-        for db in dbs:
-            db_node = tree.root.add(
-                f"📁  {db.name}",
-                data={"type": "db", "path": db},
-            )
-            for tile in _list_tiles(db):
-                name = tile.get("tile_name") or f"tile_{tile.get('tile_number', '?')}"
-                ver  = str(tile.get("version",  "")).zfill(2)
-                rev  = str(tile.get("revision", "")).zfill(2)
-                db_node.add_leaf(
-                    f"  {name}  v{ver}r{rev}",
-                    data={"type": "tile", "db": db, "tile": tile},
-                )
-            db_node.expand()
+        if self._tiles:
+            self._tile = self._tiles[0]
+            self._populate_runs(db, self._tiles[0])
+
+    def _populate_runs(self, db: Path, tile: dict) -> None:
+        tile_id    = tile.get("tile_id", "")
+        self._runs = _list_runs(db, tile_id)
+        lv         = self.query_one("#lv-run", ListView)
+        empty      = self.query_one("#run-empty", Label)
+        lv.clear()
+
+        if not self._runs:
+            lv.display    = False
+            empty.display = True
+            empty.update("No hay runs — presiona [R].")
+            return
+
+        lv.display    = True
+        empty.display = False
+        for run_dir in self._runs:
+            m      = _run_manifest(run_dir)
+            status = m.get("status", "?")
+            date   = str(m.get("date", ""))[:10]
+            icon   = _status_icon(status)
+            css    = {"PASS": "run-pass", "FAIL": "run-fail"}.get(status, "run-warn")
+            lv.append(ListItem(Label(
+                f"  {icon}  {run_dir.name}  {date}",
+                classes=css,
+            )))
+
+    def _clear_lv(self, lv_id: str, empty_id: str, msg: str) -> None:
+        lv    = self.query_one(f"#{lv_id}",  ListView)
+        empty = self.query_one(f"#{empty_id}", Label)
+        lv.clear()
+        lv.display    = False
+        empty.display = True
+        empty.update(msg)
+
+    # ── Column focus ─────────────────────────────────────────────────────────
+
+    def _set_col(self, col: int) -> None:
+        for i, cid in enumerate(_COL_IDS):
+            c = self.query_one(f"#{cid}")
+            if i == col:
+                c.add_class("active")
+            else:
+                c.remove_class("active")
+        self._col = col
+        lv = self.query_one(f"#{_LV_IDS[col]}", ListView)
+        if lv.display:
+            lv.focus()
 
     # ── Breadcrumb ────────────────────────────────────────────────────────────
 
     def _update_breadcrumb(self) -> None:
         parts = ["workspace", "veriflow"]
-        if self._current_db:
-            parts.append(self._current_db.name)
-        if self._current_tile:
-            parts.append(self._current_tile.get("tile_name", "?"))
+        if self._db:
+            parts.append(self._db.name)
+        if self._tile:
+            parts.append(self._tile.get("tile_name", "?"))
+        if self._run:
+            parts.append(self._run.name)
         self.query_one("#breadcrumb", Label).update(" > ".join(parts))
 
-    # ── Detail panel ──────────────────────────────────────────────────────────
-
-    def _show_tile_info(self, visible: bool) -> None:
-        self.query_one("#detail-empty", Label).display = not visible
-        self.query_one("#tile-info", Vertical).display = visible
-
-    def _update_detail(self) -> None:
-        tile = self._current_tile
-        db   = self._current_db
-
-        if tile is None or db is None:
-            self._show_tile_info(False)
-            return
-
-        self._show_tile_info(True)
-
-        tile_id   = tile.get("tile_id", "?")
-        tile_name = tile.get("tile_name") or f"tile_{tile.get('tile_number', '?')}"
-        version   = tile.get("version",  "?")
-        revision  = tile.get("revision", "?")
-
-        self.query_one("#detail-title",    Label).update(tile_name)
-        self.query_one("#detail-subtitle", Label).update(tile_id)
-        self.query_one("#detail-version",  Label).update(f"v{version}r{revision}")
-        self.query_one("#detail-panel").border_title = f"  {tile_name}"
-
-        runs = _list_runs(db, tile_id)
-        self._current_runs    = runs
-        self._current_run_dir = None
-
-        runs_list  = self.query_one("#runs-list",  ListView)
-        runs_empty = self.query_one("#runs-empty", Label)
-        runs_list.clear()
-
-        if not runs:
-            runs_empty.add_class("visible")
-            runs_list.remove_class("visible")
-        else:
-            runs_empty.remove_class("visible")
-            runs_list.add_class("visible")
-            for run_dir in runs:
-                m      = _run_manifest(run_dir)
-                status = m.get("status", "?")
-                date   = str(m.get("date", ""))[:10]
-                icon   = _status_icon(status)
-                runs_list.append(ListItem(Label(f"  {icon}  {run_dir.name}  {date}")))
-
-        host_ws = os.environ.get("HOST_WORKSPACE", str(self._workspace))
-        self.query_one("#workspace-label", Label).update(f"\nWorkspace: {host_ws}")
-
-    # ── Events ────────────────────────────────────────────────────────────────
-
-    def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
-        data = event.node.data
-        if data is None:
-            return
-        if data.get("type") == "tile":
-            self._current_db      = data["db"]
-            self._current_tile    = data["tile"]
-            self._current_runs    = []
-            self._current_run_dir = None
-            self._update_breadcrumb()
-            self._update_detail()
-        elif data.get("type") == "db":
-            self._current_db   = data["path"]
-            self._current_tile = None
-            self._current_runs = []
-            self._current_run_dir = None
-            self._show_tile_info(False)
-            self.query_one("#detail-panel").border_title = f"  {data['path'].name}"
-            self._update_breadcrumb()
+    # ── Events ───────────────────────────────────────────────────────────────
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        if event.list_view.id != "runs-list":
+        if self._loading:
             return
-        idx = event.list_view.index
-        if idx is not None and 0 <= idx < len(self._current_runs):
-            self._current_run_dir = self._current_runs[idx]
+        lv_id = event.list_view.id
+        idx   = event.list_view.index
+        if idx is None:
+            return
+
+        self._loading = True
+        try:
+            if lv_id == "lv-db" and 0 <= idx < len(self._dbs):
+                self._db   = self._dbs[idx]
+                self._tile = None
+                self._run  = None
+                self._populate_tiles(self._db)
+                self._update_breadcrumb()
+
+            elif lv_id == "lv-tile" and 0 <= idx < len(self._tiles):
+                self._tile = self._tiles[idx]
+                self._run  = None
+                if self._db:
+                    self._populate_runs(self._db, self._tile)
+                self._update_breadcrumb()
+
+            elif lv_id == "lv-run" and 0 <= idx < len(self._runs):
+                self._run = self._runs[idx]
+                self._update_breadcrumb()
+        finally:
+            self._loading = False
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.id == _LV_IDS[self._col]:
+            self.action_go_right()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-init":
             self.action_init_db()
 
-    # ── Actions ───────────────────────────────────────────────────────────────
+    # ── Navigation actions ────────────────────────────────────────────────────
+
+    def action_go_right(self) -> None:
+        if self._col == 0:
+            if not self._db or not self._tiles:
+                self.notify("No hay tiles — presiona [N].", severity="warning")
+                return
+            self._set_col(1)
+        elif self._col == 1:
+            if not self._tile or not self._runs:
+                self.notify("No hay runs — presiona [R].", severity="warning")
+                return
+            self._set_col(2)
+
+    def action_go_left(self) -> None:
+        if self._col == 2:
+            self._set_col(1)
+        elif self._col == 1:
+            self._set_col(0)
+        elif self._col == 0:
+            self.push_screen(
+                ConfirmScreen("¿Salir de VeriFlow?"),
+                lambda ok: self.exit() if ok else None,
+            )
+
+    # ── Command actions ───────────────────────────────────────────────────────
 
     def action_init_db(self) -> None:
         self.push_screen(
-            AskInputScreen(
-                "Init Database",
-                "Nombre de la nueva database:",
-                "mi_proyecto",
-            ),
+            AskInputScreen("Init Database", "Nombre de la nueva database:", "mi_proyecto"),
             self._on_init_name,
         )
 
@@ -709,48 +694,46 @@ class VeriFlowApp(App):
         db_path = self._workspace / name
         with self.suspend():
             subprocess.run(["veriflow", "--db", str(db_path), "init"])
-        self._current_db      = None
-        self._current_tile    = None
-        self._current_run_dir = None
-        self._populate_tree()
-        self._show_tile_info(False)
+        self._db = self._tile = self._run = None
+        self._populate_dbs()
         self._update_breadcrumb()
 
     def action_new_tile(self) -> None:
-        if not self._current_db:
+        if not self._db:
             self.notify("Selecciona una database primero.", severity="warning")
             return
         with self.suspend():
-            subprocess.run(["veriflow", "--db", str(self._current_db), "create-tile"])
-        self._populate_tree()
-        self._update_detail()
+            subprocess.run(["veriflow", "--db", str(self._db), "create-tile"])
+        self._populate_tiles(self._db)
+        self._update_breadcrumb()
 
     def action_run_tile(self) -> None:
-        if not self._current_tile or not self._current_db:
+        if not self._tile or not self._db:
             self.notify("Selecciona un tile primero.", severity="warning")
             return
-        tile_number = self._current_tile.get("tile_number", "")
+        tile_number = self._tile.get("tile_number", "")
         with self.suspend():
-            subprocess.run(["veriflow", "--db", str(self._current_db), "run", "--tile", tile_number])
-        self._update_detail()
+            subprocess.run(["veriflow", "--db", str(self._db), "run", "--tile", tile_number])
+        if self._tile:
+            self._populate_runs(self._db, self._tile)
 
     def action_open_waves(self) -> None:
-        if not self._current_run_dir:
-            self.notify("Selecciona un run de la lista primero.", severity="warning")
+        if not self._run:
+            self.notify("Selecciona un run primero.", severity="warning")
             return
-        tile_number = self._current_tile.get("tile_number", "")
+        tile_number = self._tile.get("tile_number", "")
         with self.suspend():
             subprocess.run([
-                "veriflow", "--db", str(self._current_db),
-                "waves", "--tile", tile_number, "--run", self._current_run_dir.name,
+                "veriflow", "--db", str(self._db),
+                "waves", "--tile", tile_number, "--run", self._run.name,
             ])
 
     def action_edit_tile(self) -> None:
-        if not self._current_tile or not self._current_db:
+        if not self._tile or not self._db:
             self.notify("Selecciona un tile primero.", severity="warning")
             return
-        tile_number = self._current_tile.get("tile_number", "")
-        config_path = _tile_config_path(self._current_db, tile_number)
+        tile_number = self._tile.get("tile_number", "")
+        config_path = _tile_config_path(self._db, tile_number)
         self.push_screen(
             EditTileScreen(config_path, _read_yaml(config_path)),
             self._on_tile_saved,
@@ -759,22 +742,17 @@ class VeriFlowApp(App):
     def _on_tile_saved(self, saved: bool) -> None:
         if saved:
             self.notify("Tile config guardado.", severity="information")
-            self._populate_tree()
-            self._update_detail()
+            self._populate_tiles(self._db)
 
     def action_edit_project(self) -> None:
-        if not self._current_db:
+        if not self._db:
             self.notify("Selecciona una database primero.", severity="warning")
             return
-        config_path = self._current_db / "project_config.yaml"
+        config_path = self._db / "project_config.yaml"
         self.push_screen(
             EditProjectScreen(config_path, _read_yaml(config_path)),
-            self._on_project_saved,
+            lambda saved: self.notify("Project config guardado.") if saved else None,
         )
-
-    def _on_project_saved(self, saved: bool) -> None:
-        if saved:
-            self.notify("Project config guardado.", severity="information")
 
     def action_show_path(self) -> None:
         host_ws = os.environ.get("HOST_WORKSPACE", str(self._workspace))
@@ -783,16 +761,11 @@ class VeriFlowApp(App):
     def action_show_help(self) -> None:
         self.push_screen(HelpScreen())
 
-    def action_go_back(self) -> None:
-        tree = self.query_one("#nav-tree", Tree)
-        node = tree.cursor_node
-        if node is None or node.parent is None or node.parent.is_root:
-            self.exit()
-        else:
-            tree.move_cursor(node.parent)
-
     def action_quit_app(self) -> None:
-        self.exit()
+        self.push_screen(
+            ConfirmScreen("¿Salir de VeriFlow?"),
+            lambda ok: self.exit() if ok else None,
+        )
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
