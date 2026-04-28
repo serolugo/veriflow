@@ -14,7 +14,15 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Input, Label, ListItem, ListView
 
-from .themes import build_css, get_palette
+from .themes import (
+    THEME_LABELS,
+    THEMES,
+    build_css_vars,
+    get_palette,
+    load_theme,
+    palette_to_vars,
+    save_theme,
+)
 
 
 # ─── Data helpers ─────────────────────────────────────────────────────────────
@@ -84,141 +92,98 @@ def _tile_config_path(db: Path, tile_number: str) -> Path:
 
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
+# Uses var(--tb-X) CSS variables injected via App.get_css_variables().
+# Changing the theme calls refresh_css() which re-resolves all variables.
 
-def _make_css() -> str:
-    p = get_palette()
-    base = build_css(p)
-    layout = f"""
-#breadcrumb {{
+_APP_CSS = build_css_vars() + """
+#breadcrumb {
     height: 1;
-    background: {p.bg_muted};
-    color: {p.blue};
+    background: var(--tb-bg-muted);
+    color: var(--tb-blue);
     padding: 0 2;
     text-style: bold;
-}}
+}
 
-#columns {{
+#columns {
     height: 1fr;
     padding: 0 1;
-}}
+}
 
-/* Three columns */
-.col {{
-    border: round {p.border};
+.col {
+    border: round var(--tb-border);
     margin: 0 1;
     height: 1fr;
-}}
+}
 
-.col.active {{
-    border: round {p.accent};
-}}
+.col.active {
+    border: round var(--tb-accent);
+}
 
-#col-db   {{ width: 26; }}
-#col-tile {{ width: 1fr; }}
-#col-run  {{ width: 2fr; }}
+#col-db   { width: 26; }
+#col-tile { width: 1fr; }
+#col-run  { width: 2fr; }
 
-/* ListViews fill their column */
-ListView {{
-    height: 1fr;
-    width: 1fr;
-    background: {p.bg};
-    scrollbar-background: {p.bg};
-    scrollbar-color: {p.border};
-}}
-
-ListView > ListItem {{
-    padding: 0 1;
-    color: {p.text};
-    background: {p.bg};
-}}
-
-ListView > ListItem.--highlight {{
-    background: {p.selected_bg};
-    color: {p.text};
-    text-style: bold;
-}}
-
-/* Status colours inside run list items */
-.run-pass {{ color: {p.green}; }}
-.run-fail {{ color: {p.red};   }}
-.run-warn {{ color: {p.yellow}; }}
-
-/* Empty-state containers */
-.col-empty {{
-    width: 1fr;
-    height: 1fr;
-    align: center middle;
-    color: {p.text_dim};
-}}
-
-#db-empty {{
+#db-empty {
     display: none;
     width: 1fr;
     height: 1fr;
     align: center middle;
     padding: 1 2;
-}}
+    color: var(--tb-text-dim);
+}
 
-#btn-init {{
+#btn-init {
     margin-top: 1;
-    background: {p.orange};
-    color: {p.bg};
+    background: var(--tb-orange);
+    color: var(--tb-bg);
     border: none;
     width: 100%;
-}}
+}
 
-#btn-init:focus {{
-    background: {p.yellow};
-    color: {p.bg};
-}}
+#btn-init:focus {
+    background: var(--tb-yellow);
+}
 
-/* Form screens */
-#form-scroll {{ padding: 2 4; }}
-#form-title  {{ color: {p.orange}; text-style: bold; margin-bottom: 1; }}
+#form-scroll { padding: 2 4; }
+#form-title  { color: var(--tb-orange); text-style: bold; margin-bottom: 1; }
+.field-label { color: var(--tb-text-dim); height: 1; }
 
-.field-label {{ color: {p.text_dim}; height: 1; }}
-
-Input {{
+Input {
     margin-bottom: 1;
-    background: {p.bg_muted};
-    border: tall {p.border};
-    color: {p.text};
-}}
+    background: var(--tb-bg-muted);
+    border: tall var(--tb-border);
+    color: var(--tb-text);
+}
+Input:focus { border: tall var(--tb-orange); }
 
-Input:focus {{ border: tall {p.orange}; }}
+#btn-row   { margin-top: 1; height: 3; layout: horizontal; }
+Button     { margin-right: 2; }
+#btn-save   { background: var(--tb-orange);   color: var(--tb-bg); border: none; }
+#btn-cancel { background: var(--tb-bg-muted); color: var(--tb-text); border: none; }
+#btn-yes    { background: var(--tb-red);      color: var(--tb-bg); border: none; }
+#btn-no     { background: var(--tb-bg-muted); color: var(--tb-text); border: none; }
 
-#btn-row {{ margin-top: 1; height: 3; layout: horizontal; }}
-Button   {{ margin-right: 2; }}
+#help-title { color: var(--tb-orange); text-style: bold; margin-bottom: 1; }
 
-#btn-save   {{ background: {p.orange}; color: {p.bg}; border: none; }}
-#btn-cancel {{ background: {p.bg_muted}; color: {p.text}; border: none; }}
-#btn-yes    {{ background: {p.red};    color: {p.bg}; border: none; }}
-#btn-no     {{ background: {p.bg_muted}; color: {p.text}; border: none; }}
-
-/* Help screen */
-#help-title {{ color: {p.orange}; text-style: bold; margin-bottom: 1; }}
-
-Footer {{
-    background: {p.bg_muted};
-    color: {p.text_dim};
-}}
-
-/* Confirm modal */
-#confirm-box {{
-    background: {p.bg_muted};
-    border: round {p.accent};
+#confirm-box {
+    background: var(--tb-bg-muted);
+    border: round var(--tb-accent);
     padding: 2 4;
     width: 50;
     height: auto;
     align: center middle;
-}}
+}
+#confirm-msg { color: var(--tb-text); margin-bottom: 1; }
 
-#confirm-msg {{ color: {p.text}; margin-bottom: 1; }}
+/* Theme picker */
+#theme-list {
+    height: 1fr;
+    width: 1fr;
+    background: var(--tb-bg);
+}
+#theme-title { color: var(--tb-orange); text-style: bold; margin-bottom: 1; }
+#theme-hint  { color: var(--tb-text-dim); margin-top: 1; }
 """
-    return base + layout
-
-
-_APP_CSS = _make_css()
 
 
 # ─── Form screens (unchanged from v1) ─────────────────────────────────────────
@@ -388,8 +353,33 @@ class ConfirmScreen(Screen):
         self.dismiss(False)
 
 
+class ThemeScreen(Screen):
+    CSS = "Screen { background: var(--tb-bg); color: var(--tb-text); padding: 2 4; }"
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def compose(self) -> ComposeResult:
+        yield Label("Seleccionar Tema", id="theme-title")
+        lv = ListView(id="theme-list")
+        yield lv
+        yield Label("↑↓ navegar · Enter seleccionar · Esc cancelar", id="theme-hint")
+
+    def on_mount(self) -> None:
+        lv      = self.query_one("#theme-list", ListView)
+        current = load_theme()
+        for key, label in THEME_LABELS.items():
+            marker = " ●" if key == current else ""
+            lv.append(ListItem(Label(f"  {label}{marker}"), name=key))
+        lv.focus()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        self.dismiss(event.item.name)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class HelpScreen(Screen):
-    CSS = "Screen { background: #1a1b26; color: #c0caf5; padding: 2 4; }"
+    CSS = "Screen { background: var(--tb-bg); color: var(--tb-text); padding: 2 4; }"
     BINDINGS = [Binding("escape,q,question_mark", "dismiss_help", "Close")]
 
     def compose(self) -> ComposeResult:
@@ -405,6 +395,7 @@ class HelpScreen(Screen):
             ("[R]",        "Ejecutar run en el tile activo"),
             ("[W]",        "Abrir waves del run activo"),
             ("[B]",        "Mostrar path del workspace"),
+            ("[T]",        "Cambiar tema"),
             ("[↑↓]",       "Navegar dentro del panel activo"),
             ("[Q]",        "Salir"),
             ("[?]",        "Esta ayuda"),
@@ -412,7 +403,7 @@ class HelpScreen(Screen):
         for key, desc in rows:
             yield Label(f"  {key:<16} {desc}")
         yield Label("")
-        yield Label("  Press Esc to close", style="color: #565f89")
+        yield Label("  Press Esc to close", style="color: var(--tb-text-dim)")
 
     def action_dismiss_help(self) -> None:
         self.dismiss()
@@ -437,6 +428,7 @@ class VeriFlowApp(App):
         Binding("r",             "run_tile",     "Run",     show=True),
         Binding("w",             "open_waves",   "Waves",   show=True),
         Binding("b",             "show_path",    "Path",    show=True),
+        Binding("t",             "pick_theme",   "Tema",    show=True),
         Binding("question_mark", "show_help",    "Ayuda",   show=True),
         Binding("q",             "quit_app",     "Salir",   show=True),
         Binding("right",         "go_right",     "",        show=False),
@@ -446,16 +438,19 @@ class VeriFlowApp(App):
 
     def __init__(self, workspace: Path) -> None:
         super().__init__()
-        self._workspace = workspace
-        self._col       = 0               # active column index
+        self._workspace   = workspace
+        self._theme: str  = load_theme()
+        self._col         = 0
         self._db:    Path | None = None
         self._tile:  dict | None = None
         self._run:   Path | None = None
-        # cached lists so highlight handlers don't re-read disk on every move
         self._dbs:   list[Path] = []
         self._tiles: list[dict] = []
         self._runs:  list[Path] = []
-        self._loading = False             # guard against recursive callbacks
+        self._loading = False
+
+    def get_css_variables(self) -> dict[str, str]:
+        return {**super().get_css_variables(), **palette_to_vars(get_palette(self._theme))}
 
     # ── Layout ───────────────────────────────────────────────────────────────
 
@@ -760,6 +755,27 @@ class VeriFlowApp(App):
 
     def action_show_help(self) -> None:
         self.push_screen(HelpScreen())
+
+    def action_pick_theme(self) -> None:
+        self.push_screen(ThemeScreen(), self._on_theme_selected)
+
+    def _on_theme_selected(self, name: str | None) -> None:
+        if not name or name == self._theme:
+            return
+        self._theme = name
+        save_theme(name)
+        try:
+            self.refresh_css()
+        except AttributeError:
+            # Fallback for older Textual versions
+            self.notify(
+                f"Tema '{THEME_LABELS.get(name, name)}' guardado. Reinicia para aplicar.",
+                severity="information",
+                timeout=4,
+            )
+            return
+        label = THEME_LABELS.get(name, name)
+        self.notify(f"Tema: {label}", severity="information", timeout=2)
 
     def action_quit_app(self) -> None:
         self.push_screen(

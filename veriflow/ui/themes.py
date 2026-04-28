@@ -352,77 +352,116 @@ def get_palette(name: str | None = None) -> Palette:
     return THEMES.get(name, THEMES[DEFAULT_THEME])
 
 
+def palette_to_vars(palette: Palette) -> dict[str, str]:
+    """Return a dict of CSS variable values for the given palette.
+
+    Keys are used as var(--tb-<key>) in the CSS template.
+    Textual injects these via App.get_css_variables().
+    """
+    return {
+        "tb-bg":           palette.bg,
+        "tb-bg-panel":     palette.bg_panel,
+        "tb-bg-muted":     palette.bg_muted,
+        "tb-text":         palette.text,
+        "tb-text-dim":     palette.text_dim,
+        "tb-accent":       palette.accent,
+        "tb-blue":         palette.blue,
+        "tb-green":        palette.green,
+        "tb-orange":       palette.orange,
+        "tb-red":          palette.red,
+        "tb-yellow":       palette.yellow,
+        "tb-border":       palette.border,
+        "tb-selected-bg":  palette.selected_bg,
+        "tb-cursor-bg":    palette.cursor_bg,
+        "tb-cursor-sel":   palette.cursor_sel_bg,
+    }
+
+
 def build_css(palette: Palette) -> str:
-    """Generate Textual inline CSS from a Palette."""
+    """Generate Textual inline CSS with hardcoded hex values (used at startup)."""
+    p = palette
     return f"""
 Screen {{
-    background: {palette.bg};
-    color: {palette.text};
+    background: {p.bg};
+    color: {p.text};
 }}
-
 .panel {{
-    border: round {palette.border};
-    background: {palette.bg};
+    border: round {p.border};
+    background: {p.bg};
 }}
-
 .panel--focused {{
-    border: round {palette.accent};
+    border: round {p.accent};
 }}
-
 .panel--title {{
-    color: {palette.blue};
+    color: {p.blue};
     text-style: bold;
 }}
-
 ListView {{
-    background: {palette.bg};
+    background: {p.bg};
 }}
-
 ListItem {{
-    background: {palette.bg};
-    color: {palette.text};
+    background: {p.bg};
+    color: {p.text};
 }}
-
-ListItem:hover {{
-    background: {palette.bg_muted};
-}}
-
 ListItem.--highlight {{
-    background: {palette.selected_bg};
-    color: {palette.text};
+    background: {p.selected_bg};
+    color: {p.text};
 }}
-
-.cursor--row {{
-    background: {palette.cursor_bg};
-    color: {palette.bg};
-}}
-
-.cursor--row-selected {{
-    background: {palette.cursor_sel_bg};
-    color: {palette.bg};
-}}
-
-.status--pass  {{ color: {palette.green};  text-style: bold; }}
-.status--fail  {{ color: {palette.red};    text-style: bold; }}
-.status--warn  {{ color: {palette.yellow}; }}
-.status--info  {{ color: {palette.blue};   }}
-
-.tool--veriflow   {{ color: {palette.orange}; text-style: bold; }}
-.tool--tilewizard {{ color: {palette.green};  text-style: bold; }}
-
-.breadcrumb {{ color: {palette.blue};     }}
-.text--dim  {{ color: {palette.text_dim}; }}
-.text--accent {{ color: {palette.accent}; }}
-
+.status--pass  {{ color: {p.green};  text-style: bold; }}
+.status--fail  {{ color: {p.red};    text-style: bold; }}
+.status--warn  {{ color: {p.yellow}; }}
+.breadcrumb    {{ color: {p.blue};   }}
+.text--dim     {{ color: {p.text_dim}; }}
 Footer {{
-    background: {palette.bg_muted};
-    color: {palette.text_dim};
+    background: {p.bg_muted};
+    color: {p.text_dim};
 }}
+"""
 
-Header {{
-    background: {palette.bg_muted};
-    color: {palette.blue};
-}}
+
+def build_css_vars() -> str:
+    """CSS template using var(--tb-X) — used with get_css_variables() for live theming."""
+    return """
+Screen {
+    background: var(--tb-bg);
+    color: var(--tb-text);
+}
+.panel {
+    border: round var(--tb-border);
+    background: var(--tb-bg);
+}
+.panel.active {
+    border: round var(--tb-accent);
+}
+ListView {
+    background: var(--tb-bg);
+    scrollbar-background: var(--tb-bg);
+    scrollbar-color: var(--tb-border);
+    height: 1fr;
+}
+ListView > ListItem {
+    padding: 0 1;
+    color: var(--tb-text);
+    background: var(--tb-bg);
+}
+ListView > ListItem.--highlight {
+    background: var(--tb-selected-bg);
+    color: var(--tb-text);
+    text-style: bold;
+}
+.run-pass { color: var(--tb-green); }
+.run-fail { color: var(--tb-red);   }
+.run-warn { color: var(--tb-yellow); }
+.col-empty {
+    width: 1fr;
+    height: 1fr;
+    align: center middle;
+    color: var(--tb-text-dim);
+}
+Footer {
+    background: var(--tb-bg-muted);
+    color: var(--tb-text-dim);
+}
 """
 
 
